@@ -51,7 +51,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     secret = conn1.recv(1024).decode().strip().lower()
 
     while len(secret) < 4 or len(secret) > 6 or not secret.isalpha():
-        conn1.sendall(b"Invalid word. Enter a 4–6 letter word:")
+        conn1.sendall(b"Invalid word. Enter a 4 to 6 letter word:")
         secret = conn1.recv(1024).decode().strip().lower()
 
     word_length = len(secret)
