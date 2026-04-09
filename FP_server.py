@@ -1,10 +1,7 @@
 import socket
-import random
 
 HOST = "127.0.0.1"
-PORT = 65433
-
-WORDS = ["cats", "dogs", "plane", "train", "brick", "apple", "grape"]
+PORT = 65432
 
 def compare_words(secret, guess, current_state):
     revealed = list(current_state)
@@ -14,7 +11,7 @@ def compare_words(secret, guess, current_state):
     secret_used = [False] * len(secret)
     guess_used = [False] * len(guess)
 
-    # First pass: correct spot
+    # Correct position
     for i in range(len(secret)):
         if guess[i] == secret[i]:
             revealed[i] = guess[i]
@@ -22,7 +19,7 @@ def compare_words(secret, guess, current_state):
             secret_used[i] = True
             guess_used[i] = True
 
-    # Second pass: correct letter, wrong spot
+    # Correct letter, wrong position
     for i in range(len(guess)):
         if guess_used[i]:
             continue
@@ -39,44 +36,50 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.bind((HOST, PORT))
     s.listen()
 
-    print("Server started. Waiting for connection...")
+    print("Server started. Waiting for 2 players...")
 
-    conn, addr = s.accept()
-    with conn:
-        print(f"Connected by {addr}")
+    conn1, addr1 = s.accept()
+    print("Player 1 connected:", addr1)
+    conn1.sendall("You are Player 1 (word maker).\nEnter a 4–6 letter word:")
 
-        secret = random.choice(WORDS)
-        word_length = len(secret)
+    conn2, addr2 = s.accept()
+    print("Player 2 connected:", addr2)
+    conn2.sendall(b"You are Player 2 (guesser). Waiting for word...\n")
 
-        # initial hidden word
-        current_state = "*" * word_length
+    # Receive secret word from Player 1
+    secret = conn1.recv(1024).decode().strip().lower()
 
-        # send length to client
-        conn.sendall(f"LENGTH {word_length}".encode())
+    while len(secret) < 4 or len(secret) > 6 or not secret.isalpha():
+        conn1.sendall("Invalid word. Enter a 4–6 letter word:")
+        secret = conn1.recv(1024).decode().strip().lower()
 
-        while True:
-            data = conn.recv(1024)
-            if not data:
-                break
+    word_length = len(secret)
+    current_state = "*" * word_length
 
-            guess = data.decode().strip().lower()
+    conn2.sendall(f"Guess the {word_length}-letter word!\n".encode())
 
-            # validation
-            if len(guess) != word_length or not guess.isalpha():
-                conn.sendall(f"Invalid guess. Enter a {word_length}-letter word.".encode())
-                continue
+    # Game loop
+    while True:
+        conn2.sendall("Enter guess: ")
+        guess = conn2.recv(1024).decode().strip().lower()
 
-            current_state, correct, wrong = compare_words(secret, guess, current_state)
+        if len(guess) != word_length or not guess.isalpha():
+            conn2.sendall(f"Invalid guess. Enter a {word_length}-letter word.\n".encode())
+            continue
 
-            if guess == secret:
-                conn.sendall(f"Correct! The word was '{secret}'".encode())
-                break
-            else:
-                message = (
-                    f"Word: {current_state}\n"
-                    f"{correct} correct position\n"
-                    f"{wrong} wrong position"
-                )
-                conn.sendall(message.encode())
+        current_state, correct, wrong = compare_words(secret, guess, current_state)
 
-        print("Game over.")
+        if guess == secret:
+            conn2.sendall(f"Correct! The word was '{secret}'\n".encode())
+            conn1.sendall("Player 2 guessed your word!\n")
+            break
+        else:
+            msg = (
+                f"Word: {current_state}\n"
+                f"{correct} correct position\n"
+                f"{wrong} wrong position\n\n"
+            )
+            conn2.sendall(msg.encode())
+
+    conn1.close()
+    conn2.close()

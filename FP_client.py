@@ -1,26 +1,20 @@
 import socket
 
 HOST = "127.0.0.1"
-PORT = 65433
+PORT = 65432
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.connect((HOST, PORT))
 
-    # receive word length
-    data = s.recv(1024).decode()
-    if data.startswith("LENGTH"):
-        word_length = int(data.split()[1])
-        print(f"Guess the {word_length}-letter word!")
-
     while True:
-        guess = input("Enter your guess: ").strip()
-
-        s.sendall(guess.encode())
-
-        response = s.recv(1024).decode()
-        print("\nServer says:")
-        print(response)
-        print()
-
-        if "Correct!" in response:
+        data = s.recv(1024)
+        if not data:
             break
+
+        message = data.decode()
+        print(message, end="")
+
+        # If server is prompting input
+        if "Enter" in message:
+            user_input = input()
+            s.sendall(user_input.encode())
