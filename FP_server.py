@@ -12,7 +12,7 @@ def compare_words(secret, guess, current_state):
     secret_used = [False] * len(secret)
     guess_used = [False] * len(guess)
 
-    # Correct position
+    # Correct position 
     for i in range(len(secret)):
         if guess[i] == secret[i]:
             revealed[i] = guess[i]
