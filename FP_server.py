@@ -3,6 +3,7 @@ import socket
 HOST = "127.0.0.1"
 PORT = 65434
 
+
 def compare_words(secret, guess, current_state):
     revealed = list(current_state)
     correct_spot = 0
@@ -36,11 +37,11 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.bind((HOST, PORT))
     s.listen()
 
-    print("Server started. Waiting for other player...")
+    print("Server started. Waiting for 2 players...")
 
     conn1, addr1 = s.accept()
     print("Player 1 connected:", addr1)
-    conn1.sendall("You are Player 1 (word maker).\nEnter a 4–6 letter word:")
+    conn1.sendall(b"You are Player 1 (word setter).\nEnter a 4 to 6 letter word:")
 
     conn2, addr2 = s.accept()
     print("Player 2 connected:", addr2)
@@ -50,17 +51,17 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     secret = conn1.recv(1024).decode().strip().lower()
 
     while len(secret) < 4 or len(secret) > 6 or not secret.isalpha():
-        conn1.sendall("Invalid word. Enter a 4–6 letter word:")
+        conn1.sendall(b"Invalid word. Enter a 4–6 letter word:")
         secret = conn1.recv(1024).decode().strip().lower()
 
     word_length = len(secret)
     current_state = "*" * word_length
 
-    conn2.sendall(f"Guess the {word_length}-letter word!\n".encode())
+    conn2.sendall(f"Guess the {word_length} letter word!\n".encode())
 
     # Game loop
     while True:
-        conn2.sendall("Enter guess: ")
+        conn2.sendall(b"Enter guess: ")
         guess = conn2.recv(1024).decode().strip().lower()
 
         if len(guess) != word_length or not guess.isalpha():
@@ -71,7 +72,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
         if guess == secret:
             conn2.sendall(f"Correct! The word was '{secret}'\n".encode())
-            conn1.sendall("Player 2 guessed your word!\n")
+            conn1.sendall(b"Your word was guessed!\n")
             break
         else:
             msg = (
