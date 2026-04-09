@@ -1,7 +1,7 @@
 import socket
 
 HOST = "127.0.0.1"
-PORT = 65432
+PORT = 65434
 
 def compare_words(secret, guess, current_state):
     revealed = list(current_state)
