@@ -69,13 +69,13 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             current_state, correct, wrong = compare_words(secret, guess, current_state)
 
             if guess == secret:
-                conn.sendall(f"🎉 Correct! The word was '{secret}'".encode())
+                conn.sendall(f"Correct! The word was '{secret}'".encode())
                 break
             else:
                 message = (
                     f"Word: {current_state}\n"
-                    f"✔ {correct} correct position\n"
-                    f"↺ {wrong} wrong position"
+                    f"{correct} correct position\n"
+                    f"{wrong} wrong position"
                 )
                 conn.sendall(message.encode())
 
