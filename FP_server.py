@@ -36,7 +36,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.bind((HOST, PORT))
     s.listen()
 
-    print("Server started. Waiting for 2 players...")
+    print("Server started. Waiting for other player...")
 
     conn1, addr1 = s.accept()
     print("Player 1 connected:", addr1)
