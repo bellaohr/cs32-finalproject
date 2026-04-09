@@ -78,7 +78,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             msg = (
                 f"Word: {current_state}\n"
                 f"{correct} correct position\n"
-                f"{wrong} wrong position\n\n"
+                f"{wrong} wrong position\n"
             )
             conn2.sendall(msg.encode())
 
