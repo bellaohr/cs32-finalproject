@@ -14,7 +14,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         message = data.decode()
         print(message, end="")
 
-        # If server is prompting input
+        # server prompting input
         if "Enter" in message:
             user_input = input()
             s.sendall(user_input.encode())

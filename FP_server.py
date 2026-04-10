@@ -12,7 +12,7 @@ def compare_words(secret, guess, current_state):
     secret_used = [False] * len(secret)
     guess_used = [False] * len(guess)
 
-    # Correct position 
+    # is it in the right position
     for i in range(len(secret)):
         if guess[i] == secret[i]:
             revealed[i] = guess[i]
@@ -20,7 +20,7 @@ def compare_words(secret, guess, current_state):
             secret_used[i] = True
             guess_used[i] = True
 
-    # Correct letter, wrong position
+    # right letter, wrong position
     for i in range(len(guess)):
         if guess_used[i]:
             continue
@@ -47,7 +47,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     print("Player 2 connected:", addr2)
     conn2.sendall(b"You are Player 2 (guesser). Waiting for word...\n")
 
-    # Receive secret word from Player 1
+    # get the secret word from Player 1
     secret = conn1.recv(1024).decode().strip().lower()
 
     while len(secret) < 4 or len(secret) > 6 or not secret.isalpha():
@@ -59,7 +59,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
     conn2.sendall(f"Guess the {word_length} letter word!\n".encode())
 
-    # Game loop
+    # game loop
     while True:
         conn2.sendall(b"Enter guess: ")
         guess = conn2.recv(1024).decode().strip().lower()
