@@ -15,6 +15,6 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         print(message, end="")
 
         # server prompting input
-        if message.startswith("INPUT:"):
+        if message.strip().startswith("INPUT:"):
             user_input = input()
             s.sendall((user_input + "\n").encode())
