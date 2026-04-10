@@ -59,7 +59,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
     conn2.sendall(f"Guess the {word_length} letter word!\n".encode())
 
-    print("Received secret:", secret) #check to see where problem is
+  #  print("Received secret:", secret) #check
     # game loop
     while True:
         conn2.sendall(b"Enter guess:\n")
