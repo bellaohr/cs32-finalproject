@@ -5,6 +5,7 @@ PORT = 65434
 
 MAX_GUESSES = 10
 
+# ── Protocol helpers ──────────────────────────────────────────────────────────
 # Every message the server sends ends with a newline.
 # When the server wants the client to read a line of input it first sends
 # the line "INPUT:<prompt text>\n".  The client then prompts the user and
@@ -20,7 +21,7 @@ def ask(conn, prompt: str) -> str:
     return conn.recv(1024).decode().strip()
 
 
-#  logic
+# ── Game logic ────────────────────────────────────────────────────────────────
 
 def compare_words(secret: str, guess: str, current_state: str):
     """Return (new_state, correct_spot_count, wrong_spot_count)."""
@@ -52,7 +53,7 @@ def compare_words(secret: str, guess: str, current_state: str):
     return "".join(revealed), correct_spot, wrong_spot
 
 
-# server
+# ── Server ────────────────────────────────────────────────────────────────────
 
 def run_server():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as srv:
@@ -64,13 +65,14 @@ def run_server():
         conn1, addr1 = srv.accept()
         print(f"Player 1 connected: {addr1}")
         send(conn1, "=== WORDUEL ===")
-        send(conn1, "You are Player 1 — the Word Setter.")
+        send(conn1, "You are Player 1 — the Word Setter. Waiting for Player 2 to connect…")
 
         conn2, addr2 = srv.accept()
         print(f"Player 2 connected: {addr2}")
         send(conn2, "=== WORDUEL ===")
-        send(conn2, "You are Player 2 — the Guesser.")
-        send(conn2, "Waiting for Player 1 to set a word…")
+        send(conn2, "You are Player 2 — the Guesser. Waiting for Player 1 to set a word…")
+
+        send(conn1, "Player 2 has joined!")
 
         # ── Get secret word from Player 1 ─────────────────────────────────────
         secret = ask(conn1, "Enter a 4–6 letter word: ")
@@ -85,7 +87,7 @@ def run_server():
         send(conn2, f"\nGame on! Guess the {word_length}-letter word. You have {MAX_GUESSES} attempts.")
         send(conn2, f"Word: {current_state}")
 
-        # guess loop
+        # ── Guessing loop ─────────────────────────────────────────────────────
         for attempt in range(1, MAX_GUESSES + 1):
             guess = ask(conn2, f"Guess #{attempt}/{MAX_GUESSES}: ")
 
@@ -118,8 +120,8 @@ def run_server():
                 send(conn1, f"     → state: {current_state}  ({correct} right spot, {wrong} wrong spot)")
         else:
             # Ran out of guesses
-            send(conn2, f"\n Out of guesses! The word was: {secret.upper()}")
-            send(conn1, f"\n Player 2 ran out of guesses! Your word '{secret.upper()}' survived!")
+            send(conn2, f"\n💀 Out of guesses! The word was: {secret.upper()}")
+            send(conn1, f"\n🏆 Player 2 ran out of guesses! Your word '{secret.upper()}' survived!")
 
         send(conn1, "\n--- Game over. Thanks for playing! ---")
         send(conn2, "\n--- Game over. Thanks for playing! ---")
