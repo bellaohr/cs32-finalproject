@@ -17,7 +17,7 @@ def run_client():
         while True:
             chunk = s.recv(4096)
             if not chunk:
-                # server closed the connection – game over
+                # server closed the connection –> game over
                 break
 
             # decode the incoming bytes and append them to the buffer
