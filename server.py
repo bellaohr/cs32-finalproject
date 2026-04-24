@@ -120,8 +120,8 @@ def run_server():
                 send(conn1, f"     → state: {current_state}  ({correct} right spot, {wrong} wrong spot)")
         else:
             # Ran out of guesses
-            send(conn2, f"\n💀 Out of guesses! The word was: {secret.upper()}")
-            send(conn1, f"\n🏆 Player 2 ran out of guesses! Your word '{secret.upper()}' survived!")
+            send(conn2, f"\n Out of guesses! The word was: {secret.upper()}")
+            send(conn1, f"\n Player 2 ran out of guesses! Your word '{secret.upper()}' survived!")
 
         send(conn1, "\n--- Game over. Thanks for playing! ---")
         send(conn2, "\n--- Game over. Thanks for playing! ---")
