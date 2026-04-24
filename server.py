@@ -65,7 +65,7 @@ def run_server():
         srv.listen()
         print(f"Server listening on {HOST}:{PORT} – waiting for 2 players…")
 
-        # accept player 1 and give role
+        # accept/connect player 1 and give role
         conn1, addr1 = srv.accept()
         print(f"Player 1 connected: {addr1}")
         send(conn1, "=== WORDUEL ===")
