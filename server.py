@@ -129,14 +129,14 @@ def run_server():
                     f"  {remaining} guess{'es' if remaining != 1 else ''} remaining"
                 )
                 send(conn2, msg)
-                # send player 1 a compact summary of the result
+                # send player 1 summary of the result
                 send(conn1, f"     → state: {current_state}  ({correct} right spot, {wrong} wrong spot)")
         else:
-            # player 2 used all guesses without winning – reveal the word
+            # player 2 used all guesses without winning so reveal the word
             send(conn2, f"\n Out of guesses! The word was: {secret.upper()}")
             send(conn1, f"\n Player 2 ran out of guesses! Your word '{secret.upper()}' survived!")
 
-        # send a closing message to both players and shut down the connections
+        # send end message and shut down the connection
         send(conn1, "\n Game over. Thanks for playing!")
         send(conn2, "\n Game over. Thanks for playing!")
 
