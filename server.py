@@ -96,7 +96,7 @@ def run_server():
         send(conn2, f"\nGame on! Guess the {word_length}-letter word. You have {MAX_GUESSES} attempts.")
         send(conn2, f"Word: {current_state}")
 
-        # guessing loop 
+        # guessing loop
         for attempt in range(1, MAX_GUESSES + 1):
             # ask player 2 for a guess and validate it
             guess = ask(conn2, f"Guess #{attempt}/{MAX_GUESSES}: ")
@@ -137,8 +137,8 @@ def run_server():
             send(conn1, f"\n Player 2 ran out of guesses! Your word '{secret.upper()}' survived!")
 
         # send a closing message to both players and shut down the connections
-        send(conn1, "\n--- Game over. Thanks for playing! ---")
-        send(conn2, "\n--- Game over. Thanks for playing! ---")
+        send(conn1, "\n Game over. Thanks for playing!")
+        send(conn2, "\n Game over. Thanks for playing!")
 
         conn1.close()
         conn2.close()
