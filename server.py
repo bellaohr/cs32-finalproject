@@ -12,7 +12,7 @@ MAX_GUESSES = 10
 # sends back "<user text>\n".
 
 def send(conn, text: str):
-    # send a plain display message to the client (no input expected)
+    # send message to the client
     conn.sendall((text + "\n").encode())
 
 def ask(conn, prompt: str) -> str:
@@ -33,7 +33,7 @@ def compare_words(secret: str, guess: str, current_state: str):
     secret_used = [False] * len(secret)
     guess_used  = [False] * len(guess)
 
-    # pass 1 – find letters in the right position
+    # 1: find letters in the right position
     for i in range(len(secret)):
         if guess[i] == secret[i]:
             revealed[i]    = guess[i]
@@ -41,7 +41,7 @@ def compare_words(secret: str, guess: str, current_state: str):
             secret_used[i] = True
             guess_used[i]  = True
 
-    # pass 2 – find correct letters in the wrong position
+    # 2: find correct letters in the wrong position
     for i in range(len(guess)):
         if guess_used[i]:
             continue
@@ -65,13 +65,13 @@ def run_server():
         srv.listen()
         print(f"Server listening on {HOST}:{PORT} – waiting for 2 players…")
 
-        # accept player 1 and greet them
+        # accept player 1 and give role
         conn1, addr1 = srv.accept()
         print(f"Player 1 connected: {addr1}")
         send(conn1, "=== WORDUEL ===")
         send(conn1, "You are Player 1 — the Wordsetter. Waiting for Player 2 to connect…")
 
-        # accept player 2 and greet them
+        # accept player 2 and give them role
         conn2, addr2 = srv.accept()
         print(f"Player 2 connected: {addr2}")
         send(conn2, "=== WORDUEL ===")
