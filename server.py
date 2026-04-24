@@ -69,7 +69,7 @@ def run_server():
         conn1, addr1 = srv.accept()
         print(f"Player 1 connected: {addr1}")
         send(conn1, "=== WORDUEL ===")
-        send(conn1, "You are Player 1 — the Word Setter. Waiting for Player 2 to connect…")
+        send(conn1, "You are Player 1 — the Wordsetter. Waiting for Player 2 to connect…")
 
         # accept player 2 and greet them
         conn2, addr2 = srv.accept()
