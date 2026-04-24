@@ -5,4 +5,5 @@ I am hoping to make a guess the word game where a player picks a word between 4-
 The subtask I choose to do is the finding the letter in the correct spot and making sure it is printed out in the subsequent guesses! I think I would need to slice both the word and the guess, index (e.g. if guess[2] and answer[2] are the same) then find a way to reveal just that part of the word.
 
 4/23 UPDATE: (FP STATUS)
-- 
+- before the client was waiting to recieve a message that started with INPUT: before it even let the player type anything, in this version i updated the server code so that it distinguishes between IMPUTs from player 1 and other messages
+
