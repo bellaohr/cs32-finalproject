@@ -7,3 +7,6 @@ The subtask I choose to do is the finding the letter in the correct spot and mak
 4/23 UPDATE: (FP STATUS)
 - before the client was waiting to recieve a message that started with INPUT: before it even let the player type anything, in this version i updated the server code so that it distinguishes between IMPUTs from player 1 and other messages
 - i heard i was supposed to do something different than what i did from class so instead of having a client as one player and server as another, i put both players into the server so now there are 3 open terminals!
+As of now, the game works so there are 2 players and one player is the wordsetter and the other is the guesser. the wordsetter sets a 4-6 character word that is then hidden via starts that correspond to the number of characters in that word. the player 2 then has to guess the word and letters in the correct spot are revealed while the letters that are in the wrong spot are just noted that they are in the wrong spot.
+
+POTENTIAL NEXT STEP: Only letting actual words be used (or make it a secret code game instead and have a different display)
