@@ -6,4 +6,4 @@ The subtask I choose to do is the finding the letter in the correct spot and mak
 
 4/23 UPDATE: (FP STATUS)
 - before the client was waiting to recieve a message that started with INPUT: before it even let the player type anything, in this version i updated the server code so that it distinguishes between IMPUTs from player 1 and other messages
-
+- i heard i was supposed to do something different than what i did from class so instead of having a client as one player and server as another, i put both players into the server so now there are 3 open terminals!

@@ -35,7 +35,7 @@ def run_client():
                     # send the user's response back to the server
                     s.sendall((user_input + "\n").encode())
                 else:
-                    # plain display line – just print it
+                    # oprint plain display line
                     print(line)
 
 

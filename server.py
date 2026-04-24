@@ -5,8 +5,7 @@ PORT = 65434
 
 MAX_GUESSES = 10
 
-# protocol helpers
-# every message the server sends ends with a newline.
+# BIG FIX FROM BEFORE
 # when the server wants the client to read a line of input it first sends
 # the line "INPUT:<prompt text>\n". the client then prompts the user and
 # sends back "<user text>\n".
