@@ -1,444 +1,736 @@
+"""
+client_web.py  –  Flask web interface for Worduel
+==================================================
+Run this instead of client.py.  It connects to the game server over TCP
+(same HOST / PORT as before) and serves a browser UI on port 5000.
+
+Usage
+-----
+    pip install flask
+    python client_web.py
+
+Then open the URL that Codespaces forwards for port 5000.
+Two players each open the page in their own browser tab.
+"""
+
 import socket
 import threading
-import tkinter as tk
-from tkinter import font as tkfont
+import queue
+import time
+from flask import Flask, Response, request, jsonify, render_template_string
 
-# ── network config (must match server.py) ──────────────────────────────────────
+# ── network config (must match server.py) ─────────────────────────────────────
 HOST = "127.0.0.1"
 PORT = 65434
 
-# ── colour palette  (retro amber-on-black terminal) ───────────────────────────
-BG          = "#0a0a0a"   # near-black background
-SURFACE     = "#111111"   # slightly lifted panels
-AMBER       = "#ffb300"   # primary amber glow
-AMBER_DIM   = "#7a5500"   # dimmed amber for empty slots
-GREEN       = "#39ff14"   # neon green for correct-position letters
-YELLOW      = "#ffe135"   # yellow for wrong-position hints
-RED         = "#ff3c3c"   # error / out-of-guesses
-BORDER      = "#2a2a2a"   # subtle panel borders
-TEXT_MUTED  = "#555555"   # muted label text
+# ── Flask app ──────────────────────────────────────────────────────────────────
+app = Flask(__name__)
 
-# ── layout constants ───────────────────────────────────────────────────────────
-BOX_W, BOX_H = 58, 68    # pixel size of each letter tile
-BOX_GAP      = 8          # gap between tiles
-MAX_COLS     = 6          # maximum word length supported
-MAX_ROWS     = 10         # maximum guess rows to pre-render
-PANEL_W      = 460        # total window width
+# ── shared state between the TCP thread and the Flask routes ──────────────────
+# queue of SSE event dicts to push to the browser
+event_queue: queue.Queue = queue.Queue()
+
+# when the server sends INPUT: the TCP thread parks the prompt here and blocks
+# until the browser submits an answer via POST /send
+pending_prompt: str | None = None
+pending_answer: queue.Queue = queue.Queue()   # browser puts the answer here
+
+# TCP socket (set once connected)
+sock: socket.socket | None = None
+connected = False
+connect_error: str | None = None
 
 
-class WorduelGUI:
+# ── SSE helper ─────────────────────────────────────────────────────────────────
+
+def push(event_type: str, data: str):
+    """Put an event onto the queue so SSE can stream it to the browser."""
+    event_queue.put({"type": event_type, "data": data})
+
+
+# ── TCP thread ─────────────────────────────────────────────────────────────────
+
+def tcp_thread():
     """
-    tkinter GUI that replaces the plain-text client.
-    It connects to the server over TCP, reads MSG / INPUT lines from the
-    server (same protocol as the terminal client), and drives the interface.
+    Runs in a daemon thread.
+    Connects to the game server and processes lines exactly like client.py does,
+    but instead of printing / calling input() it pushes SSE events and waits
+    for the browser to supply answers.
     """
+    global sock, connected, connect_error, pending_prompt
 
-    def __init__(self, root: tk.Tk):
-        self.root = root
-        self.root.title("WORDUEL")
-        self.root.configure(bg=BG)
-        self.root.resizable(False, False)
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((HOST, PORT))
+        connected = True
+        push("status", "connected")
 
-        # game state
-        self.word_length   = 0       # set once the server tells us
-        self.current_row   = 0       # which guess row we are on
-        self.current_state = []      # list of chars ('*' or revealed letter)
-        self.role          = None    # "setter" or "guesser" – detected from server msgs
-        self.game_over     = False
-        self.pending_input = False   # True while waiting for the user to submit
+        buffer = ""
+        while True:
+            chunk = sock.recv(4096)
+            if not chunk:
+                push("status", "disconnected")
+                break
 
-        # socket + thread
-        self.sock   = None
-        self.buffer = ""
+            buffer += chunk.decode()
 
-        # build all UI widgets
-        self._build_ui()
+            # process every complete newline-terminated line
+            while "\n" in buffer:
+                line, buffer = buffer.split("\n", 1)
 
-        # connect to the server in a background thread so the GUI stays responsive
-        threading.Thread(target=self._connect, daemon=True).start()
+                if line.startswith("INPUT:"):
+                    # server wants input – tell the browser and wait for an answer
+                    prompt = line[len("INPUT:"):]
+                    pending_prompt = prompt
+                    push("input_request", prompt)
 
-    # ── UI construction ────────────────────────────────────────────────────────
+                    # block this thread until the browser POSTs an answer
+                    answer = pending_answer.get()
+                    pending_prompt = None
 
-    def _build_ui(self):
-        """Create every widget.  Letter grid is created later once we know word length."""
+                    # send the answer back to the game server
+                    sock.sendall((answer + "\n").encode())
+                    push("sent", answer)
 
-        # custom fonts
-        self.font_title  = tkfont.Font(family="Courier", size=22, weight="bold")
-        self.font_tile   = tkfont.Font(family="Courier", size=26, weight="bold")
-        self.font_label  = tkfont.Font(family="Courier", size=9)
-        self.font_input  = tkfont.Font(family="Courier", size=14)
-        self.font_log    = tkfont.Font(family="Courier", size=10)
-        self.font_hint   = tkfont.Font(family="Courier", size=11)
+                else:
+                    # plain display message – forward to browser
+                    push("msg", line)
 
-        # ── title bar ─────────────────────────────────────────────────────────
-        title_frame = tk.Frame(self.root, bg=BG)
-        title_frame.pack(fill="x", padx=20, pady=(18, 4))
+    except ConnectionRefusedError:
+        connect_error = f"Could not connect to game server at {HOST}:{PORT}. Is server.py running?"
+        push("error", connect_error)
+    except Exception as exc:
+        push("error", str(exc))
 
-        tk.Label(
-            title_frame, text="W O R D U E L", font=self.font_title,
-            bg=BG, fg=AMBER
-        ).pack(side="left")
 
-        self.role_badge = tk.Label(
-            title_frame, text="connecting…", font=self.font_label,
-            bg=BG, fg=TEXT_MUTED
-        )
-        self.role_badge.pack(side="right", pady=6)
+# ── Flask routes ───────────────────────────────────────────────────────────────
 
-        tk.Frame(self.root, bg=AMBER_DIM, height=1).pack(fill="x", padx=20)
+@app.route("/")
+def index():
+    """Serve the single-page game UI."""
+    return render_template_string(HTML)
 
-        # ── letter grid canvas ────────────────────────────────────────────────
-        # canvas is sized generously; tiles are drawn after word length is known
-        self.canvas = tk.Canvas(
-            self.root, bg=BG, highlightthickness=0,
-            width=PANEL_W, height=(BOX_H + BOX_GAP) * MAX_ROWS + BOX_GAP
-        )
-        self.canvas.pack(padx=20, pady=12)
 
-        # tile rectangle and letter text IDs stored as 2-D lists
-        self.tile_rects = []
-        self.tile_texts = []
-
-        # ── hint strip (correct / misplaced counts) ───────────────────────────
-        hint_frame = tk.Frame(self.root, bg=BG)
-        hint_frame.pack(fill="x", padx=24, pady=(0, 6))
-
-        self.lbl_correct = tk.Label(
-            hint_frame, text="", font=self.font_hint, bg=BG, fg=GREEN, anchor="w"
-        )
-        self.lbl_correct.pack(side="left")
-
-        self.lbl_wrong = tk.Label(
-            hint_frame, text="", font=self.font_hint, bg=BG, fg=YELLOW, anchor="w"
-        )
-        self.lbl_wrong.pack(side="left", padx=(16, 0))
-
-        self.lbl_remaining = tk.Label(
-            hint_frame, text="", font=self.font_hint, bg=BG, fg=TEXT_MUTED, anchor="e"
-        )
-        self.lbl_remaining.pack(side="right")
-
-        tk.Frame(self.root, bg=BORDER, height=1).pack(fill="x", padx=20)
-
-        # ── input row ─────────────────────────────────────────────────────────
-        input_frame = tk.Frame(self.root, bg=BG)
-        input_frame.pack(fill="x", padx=20, pady=10)
-
-        self.prompt_lbl = tk.Label(
-            input_frame, text="", font=self.font_label,
-            bg=BG, fg=TEXT_MUTED, anchor="w"
-        )
-        self.prompt_lbl.pack(fill="x")
-
-        entry_row = tk.Frame(input_frame, bg=BG)
-        entry_row.pack(fill="x", pady=(4, 0))
-
-        self.entry_var = tk.StringVar()
-        self.entry = tk.Entry(
-            entry_row,
-            textvariable=self.entry_var,
-            font=self.font_input,
-            bg=SURFACE, fg=AMBER, insertbackground=AMBER,
-            relief="flat", bd=0,
-            highlightthickness=1, highlightbackground=AMBER_DIM,
-            highlightcolor=AMBER,
-            width=18,
-            state="disabled"
-        )
-        self.entry.pack(side="left", ipady=7, padx=(0, 10))
-        # submit on Enter key as well as the button
-        self.entry.bind("<Return>", lambda e: self._submit())
-
-        self.submit_btn = tk.Button(
-            entry_row,
-            text="SEND  ▶",
-            font=self.font_label,
-            bg=AMBER, fg=BG,
-            activebackground="#ffcf40", activeforeground=BG,
-            relief="flat", bd=0, padx=14, pady=6,
-            cursor="hand2",
-            command=self._submit,
-            state="disabled"
-        )
-        self.submit_btn.pack(side="left")
-
-        # ── scrolling log panel ───────────────────────────────────────────────
-        tk.Frame(self.root, bg=BORDER, height=1).pack(fill="x", padx=20)
-
-        log_frame = tk.Frame(self.root, bg=BG)
-        log_frame.pack(fill="both", expand=True, padx=20, pady=(6, 14))
-
-        tk.Label(
-            log_frame, text="SERVER LOG", font=self.font_label,
-            bg=BG, fg=TEXT_MUTED
-        ).pack(anchor="w")
-
-        self.log_text = tk.Text(
-            log_frame,
-            font=self.font_log,
-            bg=SURFACE, fg=TEXT_MUTED,
-            relief="flat", bd=0,
-            highlightthickness=0,
-            height=6,
-            state="disabled",
-            wrap="word",
-            cursor="arrow"
-        )
-        self.log_text.pack(fill="both", expand=True, pady=(4, 0))
-
-        # colour tags for the log
-        self.log_text.tag_config("amber",  foreground=AMBER)
-        self.log_text.tag_config("green",  foreground=GREEN)
-        self.log_text.tag_config("yellow", foreground=YELLOW)
-        self.log_text.tag_config("red",    foreground=RED)
-        self.log_text.tag_config("muted",  foreground=TEXT_MUTED)
-
-    # ── grid creation (called once word length is known) ──────────────────────
-
-    def _build_grid(self, word_length: int, max_rows: int):
-        """Draw MAX_ROWS × word_length tile placeholders on the canvas."""
-        self.word_length = word_length
-        self.current_state = ["*"] * word_length
-        self.tile_rects = []
-        self.tile_texts = []
-
-        total_w = word_length * BOX_W + (word_length - 1) * BOX_GAP
-        x_start = (PANEL_W - total_w) // 2
-
-        for row in range(max_rows):
-            row_rects = []
-            row_texts = []
-            for col in range(word_length):
-                x = x_start + col * (BOX_W + BOX_GAP)
-                y = BOX_GAP + row * (BOX_H + BOX_GAP)
-
-                rect_id = self.canvas.create_rectangle(
-                    x, y, x + BOX_W, y + BOX_H,
-                    fill=SURFACE, outline=AMBER_DIM, width=1
-                )
-                text_id = self.canvas.create_text(
-                    x + BOX_W // 2, y + BOX_H // 2,
-                    text="", font=self.tile_font if hasattr(self, "tile_font") else self.font_tile,
-                    fill=AMBER_DIM
-                )
-                row_rects.append(rect_id)
-                row_texts.append(text_id)
-
-            self.tile_rects.append(row_rects)
-            self.tile_texts.append(row_texts)
-
-        # resize canvas height to fit exactly the rows we need
-        canvas_h = max_rows * (BOX_H + BOX_GAP) + BOX_GAP
-        self.canvas.config(height=canvas_h)
-
-    def _update_grid_row(self, row: int, state: list[str]):
-        """
-        Paint a completed guess row using the revealed state.
-        Green  = correct position (letter shown, not '*')
-        Dimmed = still hidden ('*')
-        """
-        for col, ch in enumerate(state):
-            rect_id = self.tile_rects[row][col]
-            text_id = self.tile_texts[row][col]
-
-            if ch == "*":
-                self.canvas.itemconfig(rect_id, fill=SURFACE, outline=AMBER_DIM)
-                self.canvas.itemconfig(text_id, text="✦", fill=AMBER_DIM)
-            else:
-                # revealed letter – flash green
-                self.canvas.itemconfig(rect_id, fill="#0d2b0d", outline=GREEN)
-                self.canvas.itemconfig(text_id, text=ch.upper(), fill=GREEN)
-
-    # ── networking ─────────────────────────────────────────────────────────────
-
-    def _connect(self):
-        """Run in a daemon thread – connects to the server and reads lines."""
-        try:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.sock.connect((HOST, PORT))
-            self._log("Connected to server.", tag="amber")
-
-            while True:
-                chunk = self.sock.recv(4096)
-                if not chunk:
-                    # server closed the connection
-                    self.root.after(0, self._on_disconnected)
-                    break
-
-                self.buffer += chunk.decode()
-
-                # process every complete newline-terminated line in the buffer
-                while "\n" in self.buffer:
-                    line, self.buffer = self.buffer.split("\n", 1)
-                    self.root.after(0, self._handle_line, line)
-
-        except ConnectionRefusedError:
-            self.root.after(0, self._on_connect_error)
-
-    def _send(self, text: str):
-        """Send a line of text to the server."""
-        if self.sock:
-            self.sock.sendall((text + "\n").encode())
-
-    # ── line handling (runs on the main GUI thread via root.after) ─────────────
-
-    def _handle_line(self, line: str):
-        """Dispatch an incoming server line to the right handler."""
-        if line.startswith("INPUT:"):
-            # server is requesting input from the user
-            prompt = line[len("INPUT:"):]
-            self._request_input(prompt)
-        else:
-            # plain display message
-            self._handle_msg(line)
-
-    def _handle_msg(self, msg: str):
-        """Process a plain MSG line: update game state and UI."""
-        self._log(msg, tag="muted")
-
-        # ── detect role from greeting messages ────────────────────────────────
-        if "Player 1" in msg and "Wordsetter" in msg:
-            self.role = "setter"
-            self.role_badge.config(text="🔒  WORD SETTER", fg=AMBER)
-        elif "Player 2" in msg and "Guesser" in msg:
-            self.role = "guesser"
-            self.role_badge.config(text="🔍  GUESSER", fg=GREEN)
-
-        # ── detect word length from "Guess the N-letter word" message ─────────
-        if "letter word" in msg and self.word_length == 0:
-            for token in msg.split():
-                if token.isdigit():
-                    wlen = int(token)
-                    if 4 <= wlen <= 6:
-                        self._build_grid(wlen, MAX_ROWS)
-                        break
-
-        # ── parse the "Word:  <state>" line to update tile display ────────────
-        if msg.strip().startswith("Word:"):
-            state_str = msg.strip()[len("Word:"):].strip()
-            if state_str and self.word_length > 0 and len(state_str) == self.word_length:
-                self.current_state = list(state_str)
-                # update the CURRENT row with the new revealed state
-                row = max(0, self.current_row - 1)
-                self._update_grid_row(row, self.current_state)
-
-        # ── parse hint counts from feedback lines ─────────────────────────────
-        if "correct position" in msg:
+@app.route("/stream")
+def stream():
+    """
+    Server-Sent Events endpoint.
+    The browser connects here once and receives a live stream of game events.
+    """
+    def generate():
+        # drain any events already queued before the browser connected
+        while True:
             try:
-                n = int(msg.strip().split()[0])
-                self.lbl_correct.config(text=f"✅  {n} correct position{'s' if n != 1 else ''}")
-            except ValueError:
-                pass
+                evt = event_queue.get(timeout=30)
+                yield f"event: {evt['type']}\ndata: {evt['data']}\n\n"
+            except queue.Empty:
+                # send a keepalive comment so the connection stays open
+                yield ": keepalive\n\n"
 
-        if "right letter, wrong spot" in msg:
-            try:
-                n = int(msg.strip().split()[0])
-                self.lbl_wrong.config(text=f"🔄  {n} wrong spot{'s' if n != 1 else ''}")
-            except ValueError:
-                pass
-
-        if "guess" in msg and "remaining" in msg:
-            self.lbl_remaining.config(text=msg.strip(), fg=TEXT_MUTED)
-
-        # ── win / loss detection ──────────────────────────────────────────────
-        if "Correct!" in msg or "guessed" in msg:
-            self._log(msg, tag="green")
-            self._end_game(won=True)
-
-        if "Out of guesses" in msg or "survived" in msg:
-            self._log(msg, tag="red")
-            self._end_game(won=False)
-
-        if "Game over" in msg:
-            self._disable_input()
-
-    def _request_input(self, prompt: str):
-        """Enable the input field and show the prompt label."""
-        self.pending_input = True
-        self.prompt_lbl.config(text=prompt.strip())
-        self.entry.config(state="normal")
-        self.submit_btn.config(state="normal")
-        self.entry.focus_set()
-
-    def _submit(self):
-        """Called when the user presses Enter or clicks SEND."""
-        if not self.pending_input:
-            return
-
-        text = self.entry_var.get().strip()
-        if not text:
-            return
-
-        self.pending_input = False
-        self.entry_var.set("")
-        self.entry.config(state="disabled")
-        self.submit_btn.config(state="disabled")
-        self.prompt_lbl.config(text="")
-
-        self._log(f"> {text}", tag="amber")
-        self._send(text)
-
-        # if we're the guesser and the word length is set, paint the guess row
-        if self.role == "guesser" and self.word_length > 0:
-            guess = text.lower()
-            if len(guess) == self.word_length and guess.isalpha():
-                self._paint_guess_row(self.current_row, guess)
-                self.current_row += 1
-
-    def _paint_guess_row(self, row: int, guess: str):
-        """Temporarily fill a row with the typed guess in amber (pre-reveal)."""
-        if row >= len(self.tile_rects):
-            return
-        for col, ch in enumerate(guess):
-            self.canvas.itemconfig(self.tile_rects[row][col], fill="#1a1200", outline=AMBER)
-            self.canvas.itemconfig(self.tile_texts[row][col], text=ch.upper(), fill=AMBER)
-
-    # ── end-game helpers ──────────────────────────────────────────────────────
-
-    def _end_game(self, won: bool):
-        """Lock the UI and show the outcome colour on the role badge."""
-        self.game_over = True
-        self._disable_input()
-        colour = GREEN if won else RED
-        result = "YOU WON 🎉" if won else "GAME OVER 💀"
-        self.role_badge.config(text=result, fg=colour)
-        self.lbl_remaining.config(text="", fg=colour)
-
-    def _disable_input(self):
-        self.entry.config(state="disabled")
-        self.submit_btn.config(state="disabled")
-
-    # ── connection status helpers ──────────────────────────────────────────────
-
-    def _on_disconnected(self):
-        self._log("Disconnected from server.", tag="red")
-        self._disable_input()
-        self.role_badge.config(text="disconnected", fg=RED)
-
-    def _on_connect_error(self):
-        self._log(f"Could not connect to {HOST}:{PORT}. Is the server running?", tag="red")
-        self.role_badge.config(text="connection failed", fg=RED)
-
-    # ── log helper ─────────────────────────────────────────────────────────────
-
-    def _log(self, text: str, tag: str = "muted"):
-        """Append a line to the scrolling server log."""
-        self.log_text.config(state="normal")
-        self.log_text.insert("end", text + "\n", tag)
-        self.log_text.see("end")
-        self.log_text.config(state="disabled")
+    return Response(generate(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-# ── entry point ────────────────────────────────────────────────────────────────
+@app.route("/send", methods=["POST"])
+def send():
+    """
+    The browser POSTs the player's answer here.
+    We put it on pending_answer so the TCP thread can forward it to the server.
+    """
+    data = request.get_json()
+    answer = (data or {}).get("answer", "").strip()
+    if answer:
+        pending_answer.put(answer)
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "empty answer"}), 400
 
-def run_client():
-    root = tk.Tk()
-    app = WorduelGUI(root)
-    root.mainloop()
 
+@app.route("/status")
+def status():
+    return jsonify({
+        "connected": connected,
+        "error": connect_error,
+        "waiting_for_input": pending_prompt is not None,
+        "prompt": pending_prompt,
+    })
+
+
+# ── HTML / CSS / JS (single-page UI) ──────────────────────────────────────────
+
+HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>WORDUEL</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@700;900&display=swap');
+
+:root {
+  --bg:      #080c10;
+  --surface: #0e1318;
+  --border:  #1c2a36;
+  --amber:   #f0a500;
+  --amber-d: #3d2900;
+  --green:   #00e676;
+  --yellow:  #ffe135;
+  --red:     #ff3d3d;
+  --muted:   #3a5068;
+  --text:    #c8dde8;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Share Tech Mono', monospace;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* subtle scanline texture */
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.18) 2px,
+    rgba(0,0,0,0.18) 4px
+  );
+}
+
+/* ── header ─────────────────────────────────────────────────────────────── */
+header {
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 22px 0 10px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+}
+
+.logo {
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 900;
+  font-size: 2rem;
+  letter-spacing: 0.12em;
+  color: var(--amber);
+  text-shadow: 0 0 18px rgba(240,165,0,0.5);
+}
+
+#roleBadge {
+  font-size: 0.7rem;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+  text-transform: uppercase;
+  padding-bottom: 4px;
+  transition: color 0.4s;
+}
+
+/* ── main layout ────────────────────────────────────────────────────────── */
+main {
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-bottom: 40px;
+}
+
+/* ── tile grid ──────────────────────────────────────────────────────────── */
+#grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.tile-row {
+  display: flex;
+  gap: 8px;
+}
+
+.tile {
+  width: 58px;
+  height: 66px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--muted);
+  border-radius: 4px;
+  transition: background 0.35s, border-color 0.35s, color 0.35s;
+  position: relative;
+  overflow: hidden;
+}
+
+/* corner pip decorations */
+.tile::before, .tile::after {
+  content: '';
+  position: absolute;
+  width: 5px; height: 5px;
+  border-color: var(--border);
+  border-style: solid;
+  opacity: 0.5;
+}
+.tile::before { top: 3px; left: 3px; border-width: 1px 0 0 1px; }
+.tile::after  { bottom: 3px; right: 3px; border-width: 0 1px 1px 0; }
+
+.tile.active  { border-color: var(--amber); color: var(--amber); background: #12100a; }
+.tile.hidden  { color: var(--muted); }
+.tile.correct { background: #001f0f; border-color: var(--green); color: var(--green);
+                box-shadow: 0 0 10px rgba(0,230,118,0.2); }
+.tile.pop     { animation: pop 0.35s cubic-bezier(.34,1.56,.64,1) both; }
+
+@keyframes pop {
+  0%   { transform: scale(0.7) rotateX(60deg); opacity: 0; }
+  100% { transform: scale(1)   rotateX(0deg);  opacity: 1; }
+}
+
+/* ── hint bar ───────────────────────────────────────────────────────────── */
+#hintBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-height: 42px;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+}
+
+#hintCorrect  { color: var(--green);  }
+#hintWrong    { color: var(--yellow); }
+#hintRemain   { color: var(--muted);  }
+
+/* ── input panel ────────────────────────────────────────────────────────── */
+#inputPanel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px;
+}
+
+#promptLabel {
+  font-size: 0.7rem;
+  color: var(--muted);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  min-height: 16px;
+}
+
+.input-row {
+  display: flex;
+  gap: 10px;
+}
+
+#answerInput {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--amber-d);
+  border-radius: 4px;
+  color: var(--amber);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 1.1rem;
+  padding: 9px 12px;
+  outline: none;
+  letter-spacing: 0.12em;
+  transition: border-color 0.2s;
+  caret-color: var(--amber);
+}
+#answerInput:focus     { border-color: var(--amber); }
+#answerInput:disabled  { opacity: 0.3; cursor: not-allowed; }
+
+#sendBtn {
+  background: var(--amber);
+  color: #080c10;
+  border: none;
+  border-radius: 4px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 0 18px;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+#sendBtn:hover   { background: #ffc72c; }
+#sendBtn:active  { transform: scale(0.96); }
+#sendBtn:disabled { opacity: 0.25; cursor: not-allowed; transform: none; }
+
+/* ── log ────────────────────────────────────────────────────────────────── */
+#logWrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+
+.log-label {
+  font-size: 0.65rem;
+  color: var(--muted);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+#log {
+  font-size: 0.78rem;
+  line-height: 1.7;
+  color: var(--muted);
+  max-height: 160px;
+  overflow-y: auto;
+  word-break: break-all;
+}
+#log::-webkit-scrollbar { width: 4px; }
+#log::-webkit-scrollbar-thumb { background: var(--border); }
+
+.log-msg    { color: var(--muted);  }
+.log-sent   { color: var(--amber);  }
+.log-event  { color: var(--green);  }
+.log-error  { color: var(--red);    }
+
+/* ── status overlay (before connect) ───────────────────────────────────── */
+#statusOverlay {
+  position: fixed; inset: 0;
+  background: rgba(8,12,16,0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  z-index: 99;
+  font-family: 'Share Tech Mono', monospace;
+}
+
+#statusOverlay .status-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.4rem;
+  color: var(--amber);
+  letter-spacing: 0.15em;
+}
+
+#statusOverlay .status-msg {
+  font-size: 0.8rem;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+  text-align: center;
+  max-width: 340px;
+  line-height: 1.8;
+}
+
+.spinner {
+  width: 28px; height: 28px;
+  border: 2px solid var(--amber-d);
+  border-top-color: var(--amber);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- connecting overlay -->
+<div id="statusOverlay">
+  <div class="status-title">WORDUEL</div>
+  <div class="spinner"></div>
+  <div class="status-msg" id="overlayMsg">Connecting to game server…</div>
+</div>
+
+<header>
+  <div class="logo">WORDUEL</div>
+  <div id="roleBadge">waiting…</div>
+</header>
+
+<main>
+  <!-- letter tile grid (rows added dynamically) -->
+  <div id="grid"></div>
+
+  <!-- hint bar -->
+  <div id="hintBar">
+    <span id="hintCorrect"></span>
+    <span id="hintWrong"></span>
+    <span id="hintRemain"></span>
+  </div>
+
+  <!-- input panel -->
+  <div id="inputPanel">
+    <div id="promptLabel">Waiting for server…</div>
+    <div class="input-row">
+      <input id="answerInput" type="text" maxlength="6"
+             placeholder="type here…" autocomplete="off" disabled />
+      <button id="sendBtn" disabled>SEND ▶</button>
+    </div>
+  </div>
+
+  <!-- scrolling log -->
+  <div id="logWrap">
+    <div class="log-label">Server log</div>
+    <div id="log"></div>
+  </div>
+</main>
+
+<script>
+// ── state ──────────────────────────────────────────────────────────────────
+let wordLength   = 0;
+let currentRow   = 0;
+let currentState = [];   // array of chars, '*' or revealed letter
+let totalRows    = 10;   // MAX_GUESSES from server.py
+let role         = null; // 'setter' | 'guesser'
+let gameOver     = false;
+
+// ── DOM refs ───────────────────────────────────────────────────────────────
+const grid        = document.getElementById('grid');
+const hintCorrect = document.getElementById('hintCorrect');
+const hintWrong   = document.getElementById('hintWrong');
+const hintRemain  = document.getElementById('hintRemain');
+const promptLabel = document.getElementById('promptLabel');
+const answerInput = document.getElementById('answerInput');
+const sendBtn     = document.getElementById('sendBtn');
+const logEl       = document.getElementById('log');
+const roleBadge   = document.getElementById('roleBadge');
+const overlay     = document.getElementById('statusOverlay');
+const overlayMsg  = document.getElementById('overlayMsg');
+
+// ── grid helpers ───────────────────────────────────────────────────────────
+
+function buildGrid(wlen) {
+  wordLength   = wlen;
+  currentState = Array(wlen).fill('*');
+  grid.innerHTML = '';
+
+  for (let r = 0; r < totalRows; r++) {
+    const row = document.createElement('div');
+    row.className  = 'tile-row';
+    row.dataset.row = r;
+    for (let c = 0; c < wlen; c++) {
+      const tile = document.createElement('div');
+      tile.className   = 'tile hidden';
+      tile.dataset.col = c;
+      tile.textContent = '✦';
+      row.appendChild(tile);
+    }
+    grid.appendChild(row);
+  }
+}
+
+function getTile(row, col) {
+  const r = grid.querySelector(`.tile-row[data-row="${row}"]`);
+  return r ? r.querySelector(`.tile[data-col="${col}"]`) : null;
+}
+
+// paint a row amber when the player types a guess (before server confirms)
+function paintGuessRow(row, guess) {
+  for (let c = 0; c < guess.length; c++) {
+    const t = getTile(row, c);
+    if (!t) continue;
+    t.textContent = guess[c].toUpperCase();
+    t.className   = 'tile active pop';
+  }
+}
+
+// update a row with the revealed state returned by the server
+function applyState(row, state) {
+  for (let c = 0; c < state.length; c++) {
+    const t = getTile(row, c);
+    if (!t) continue;
+    if (state[c] === '*') {
+      t.textContent = '✦';
+      t.className   = 'tile hidden';
+    } else {
+      t.textContent = state[c].toUpperCase();
+      t.className   = 'tile correct pop';
+    }
+  }
+}
+
+// ── SSE – live event stream from Flask ────────────────────────────────────
+
+const es = new EventSource('/stream');
+
+es.addEventListener('status', e => {
+  if (e.data === 'connected') {
+    overlay.style.display = 'none';
+    addLog('Connected to game server.', 'log-event');
+  } else if (e.data === 'disconnected') {
+    addLog('Disconnected from server.', 'log-error');
+    setInputEnabled(false);
+    roleBadge.textContent = 'disconnected';
+    roleBadge.style.color  = 'var(--red)';
+  }
+});
+
+es.addEventListener('msg', e => {
+  const msg = e.data;
+  addLog(msg, 'log-msg');
+  handleMsg(msg);
+});
+
+es.addEventListener('input_request', e => {
+  // server is asking for input – enable the field
+  const prompt = e.data;
+  promptLabel.textContent = prompt.trim();
+  setInputEnabled(true);
+  answerInput.focus();
+});
+
+es.addEventListener('sent', e => {
+  addLog('> ' + e.data, 'log-sent');
+});
+
+es.addEventListener('error', e => {
+  const msg = e.data || 'Connection error.';
+  overlayMsg.textContent = msg;
+  overlay.style.display  = 'flex';
+  addLog(msg, 'log-error');
+});
+
+// ── message parser ─────────────────────────────────────────────────────────
+
+function handleMsg(msg) {
+  // detect role
+  if (msg.includes('Player 1') && msg.includes('Wordsetter')) {
+    role = 'setter';
+    roleBadge.textContent = '🔒  WORD SETTER';
+    roleBadge.style.color = 'var(--amber)';
+  }
+  if (msg.includes('Player 2') && msg.includes('Guesser')) {
+    role = 'guesser';
+    roleBadge.textContent = '🔍  GUESSER';
+    roleBadge.style.color = 'var(--green)';
+  }
+
+  // detect word length from "Guess the N-letter word"
+  if (msg.includes('letter word') && wordLength === 0) {
+    const m = msg.match(/(\d+)-letter word/);
+    if (m) buildGrid(parseInt(m[1]));
+  }
+
+  // detect total guesses "You have N attempts"
+  const attM = msg.match(/You have (\d+) attempt/);
+  if (attM) totalRows = parseInt(attM[1]);
+
+  // parse "Word:  <state>" line and update grid
+  const wordM = msg.match(/Word:\s+([A-Za-z*]+)/);
+  if (wordM && wordLength > 0) {
+    const state = wordM[1].split('');
+    if (state.length === wordLength) {
+      currentState = state;
+      const row = Math.max(0, currentRow - 1);
+      applyState(row, currentState);
+    }
+  }
+
+  // parse hint counts
+  const corM = msg.match(/(\d+) correct position/);
+  if (corM) hintCorrect.textContent = `✅  ${corM[1]} correct`;
+
+  const wroM = msg.match(/(\d+) right letter, wrong spot/);
+  if (wroM) hintWrong.textContent = `🔄  ${wroM[1]} wrong spot`;
+
+  const remM = msg.match(/(\d+) guess/);
+  if (remM && msg.includes('remaining')) hintRemain.textContent = msg.trim();
+
+  // win / loss
+  if (msg.includes('Correct!') || msg.includes('guessed')) {
+    endGame(true, msg);
+  }
+  if (msg.includes('Out of guesses') || msg.includes('survived')) {
+    endGame(false, msg);
+  }
+  if (msg.includes('Game over')) {
+    setInputEnabled(false);
+  }
+}
+
+// ── input / send ───────────────────────────────────────────────────────────
+
+function setInputEnabled(on) {
+  answerInput.disabled = !on;
+  sendBtn.disabled     = !on;
+  if (!on) promptLabel.textContent = 'Waiting…';
+}
+
+async function submitAnswer() {
+  if (answerInput.disabled) return;
+  const val = answerInput.value.trim();
+  if (!val) return;
+
+  // if guesser, paint the row immediately for snappy feel
+  if (role === 'guesser' && wordLength > 0) {
+    const guess = val.toLowerCase();
+    if (guess.length === wordLength && /^[a-z]+$/.test(guess)) {
+      paintGuessRow(currentRow, guess);
+      currentRow++;
+    }
+  }
+
+  answerInput.value = '';
+  setInputEnabled(false);
+
+  await fetch('/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ answer: val })
+  });
+}
+
+sendBtn.addEventListener('click', submitAnswer);
+answerInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitAnswer(); });
+
+// ── end-game ───────────────────────────────────────────────────────────────
+
+function endGame(won, msg) {
+  gameOver = true;
+  setInputEnabled(false);
+  const colour = won ? 'var(--green)' : 'var(--red)';
+  const label  = won ? '🎉 YOU WON'    : '💀 GAME OVER';
+  roleBadge.textContent = label;
+  roleBadge.style.color = colour;
+  hintRemain.textContent = '';
+  hintCorrect.style.color = colour;
+}
+
+// ── log helper ─────────────────────────────────────────────────────────────
+
+function addLog(text, cls) {
+  const line = document.createElement('div');
+  line.className   = cls || 'log-msg';
+  line.textContent = text;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+</script>
+</body>
+</html>
+"""
+
+# ── main ───────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    run_client()
+    # start the TCP → game-server thread before Flask begins serving
+    t = threading.Thread(target=tcp_thread, daemon=True)
+    t.start()
+
+    # give the TCP thread a moment to attempt connection before first request
+    time.sleep(0.3)
+
+    # run Flask on all interfaces so Codespaces port-forwarding works
+    # debug=False keeps the reloader off so we don't spawn duplicate TCP threads
+    print("Flask client running on http://0.0.0.0:5000")
+    print("Open the Codespaces forwarded URL for port 5000 in your browser.")
+    app.run(host="0.0.0.0", port=5000, debug=False)
 
 
 
