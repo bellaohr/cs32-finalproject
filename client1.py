@@ -32,23 +32,29 @@ pending_prompt: str | None = None
 def push(event_type: str, data: str):
     event_queue.put({"type": event_type, "data": data})
 
-# background tcp client thread
+# background tcp client thread -- like basically socket connection
 def tcp_thread():
     global sock, connected, connect_error, pending_prompt
+
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((HOST, PORT))
         connected = True
         push("status", "connected")
         buffer = ""
+
         while True:
             chunk = sock.recv(4096)
+
             if not chunk:
                 push("status", "disconnected")
                 break
+
             buffer += chunk.decode()
+
             while "\n" in buffer:
                 line, buffer = buffer.split("\n", 1)
+
                 if line.startswith("INPUT:"):
                     prompt = line[len("INPUT:"):]
                     pending_prompt = prompt
@@ -59,13 +65,17 @@ def tcp_thread():
                     push("sent", answer)
                 else:
                     push("msg", line)
+
     except ConnectionRefusedError:
+        # if server isn't running
         connect_error = f"Could not connect to {HOST}:{PORT}. Is server.py running?"
         push("error", connect_error)
+
     except Exception as exc:
+        # if its an unexpected error
         push("error", str(exc))
 
-
+# FLASK ROUTES!
 @app.route("/")
 def index():
     return render_template_string(HTML)
@@ -93,7 +103,7 @@ def send():
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "empty"}), 400
 
-
+# HTML + CSS + JavaScrpt
 HTML = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
