@@ -433,8 +433,11 @@ function bounceRow(row){
 
 
 if __name__ == "__main__":
+    # start TCP client in background
     threading.Thread(target=tcp_thread, daemon=True).start()
-    time.sleep(0.3)
+    time.sleep(0.3) # give connection time to initialize
+    # prints info for user
     print("Worduel web client  ->  http://0.0.0.0:5000")
     print("Open the VS Code forwarded port URL in your browser.")
+    # start flask server
     app.run(host="0.0.0.0", port=5000, debug=False)
