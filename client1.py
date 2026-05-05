@@ -12,20 +12,23 @@ import queue
 import time
 from flask import Flask, Response, request, jsonify, render_template_string
 
+# server connection configuration
 HOST = "127.0.0.1"
 PORT = 65434
 
+# flask app
 app = Flask(__name__)
 
 event_queue:    queue.Queue = queue.Queue()
 pending_answer: queue.Queue = queue.Queue()
 
+# global connection state
 sock:           socket.socket | None = None
 connected:      bool = False
 connect_error:  str | None = None
 pending_prompt: str | None = None
 
-
+# pushing events to browser via event stream
 def push(event_type: str, data: str):
     event_queue.put({"type": event_type, "data": data})
 
