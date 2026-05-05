@@ -32,7 +32,7 @@ pending_prompt: str | None = None
 def push(event_type: str, data: str):
     event_queue.put({"type": event_type, "data": data})
 
-
+# background tcp client thread
 def tcp_thread():
     global sock, connected, connect_error, pending_prompt
     try:
