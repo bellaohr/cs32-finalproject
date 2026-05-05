@@ -20,9 +20,12 @@ Technically the scripts client1 and client2 are the same except for which ports 
 An error that came up rather frequently was the "port already in use" error so if that comes up run the following command in your terminal: lsof -ti:65434 | xargs kill -9 (I also got this from Claude)
 
 
-GAI USAGE:
+GAI USAGE/External Help:
+I got help from Professor Ascrizzi with setting up VS Code and figuring out where to place all of the files and what to download.
+
 I used Claude to troubleshoot the connection and port errors I was having. During this part of the project, I focused on editing the client script and figured out that it needed to be split into two to make it easier for the users as it previously required to changing the code then running it to differentiate the two players.
-Claude wrote the part of the code that made the HTML browser possible, in addition to the Flask server structure. I will go into how I used it more in depth in my video!
+
+Claude wrote the part of the code that made the HTML browser possible, in addition to the Flask server structure. I will go into how I used it more in depth in my video and explain how I got it to teach me the components that go into connecting a code into a browser!
 
 
 
