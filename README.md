@@ -15,7 +15,15 @@ Next, the person must begin by opening three terminals in VS code:
 3) Start the second player's client server by running python3 client2.py
 4) Player 1 should open http://localhost:5000 in Chrome
 5) Player 2 should open http://localhost:5001 in Chrome
-Technically scripts 
+Technically the scripts client1 and client2 are the same except for which ports they use, so it doesn't matter what order they are run, it just is important to know that client1 script uses port 5000 while client2 uses port 5001.
+
+An error that came up rather frequently was the "port already in use" error so if that comes up run the following command in your terminal: lsof -ti:65434 | xargs kill -9 (I also got this from Claude)
+
+
+GAI USAGE:
+I used Claude to troubleshoot the connection and port errors I was having. During this part of the project, I focused on editing the client script and figured out that it needed to be split into two to make it easier for the users as it previously required to changing the code then running it to differentiate the two players.
+Claude wrote the part of the code that made the HTML browser possible, in addition to the Flask server structure. I will go into how I used it more in depth in my video!
+
 
 
 
