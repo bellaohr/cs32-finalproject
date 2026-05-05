@@ -1,5 +1,43 @@
 # cs32-finalproject
-My CS32 Final Project
+FINAL CS32 FP README:
+
+For my final project, I've created a two-player networked game. I modeled this game off of the New York Times Wordle game, however instead of getting a "random" word, this game involves to players: the "word-setter" and the "guesser."
+
+The "word-setter" will select a secret 4-6 letter word that can only include characters in the English alphabet. The "guesser"  will recieve a display of tiles that corresponds to the number of letters in the word the other player has selected and will need to guess the word. If the "guesser" gets a letter in the correct spot, the tile will turn green. If the letter is in the wrong spot but is in the "word-setter's" word, it will appear yellow. Finally, the letter will be gray if it isn't in the word at all. The keyboard at the bottom of the display will be colored accordingly to make sure the "guesser" has access to the letters they have already used
+
+
+HOW TO RUN THE CODE:
+In order to run the code, the user will need to download flask, which is done buy imputting the following into the terminal: pip3 install flask --break-system-packages (I got this from Claude)
+
+Next, the person must begin by opening three terminals in VS code:
+1) Start the game server by imputting python3 server.py
+2) Start the first player's client server by running python3 client1.py
+3) Start the second player's client server by running python3 client2.py
+4) Player 1 should open http://localhost:5000 in Chrome
+5) Player 2 should open http://localhost:5001 in Chrome
+Technically scripts 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ReadMe as of FP status (4/23)
 I am hoping to make a guess the word game where a player picks a word between 4-6 letters and the other player has to guess it. I'm planning on creating a similar thing to the final part of the roshambo PSet where the client and server were two players playing against each other. I'm hoping that the server will choose the word and the client will guess it. Ideally, I would want the word to be completely blurred out (i.e. cats would become ****) and have a printed statement that says "X words are in the correct spot" or "X words are in the wrong spot." If possible, I would want to put the word in the correct spot into the blurred out statement (i.e. if the guess was dark, the statement would become *a**)
 
 The subtask I choose to do is the finding the letter in the correct spot and making sure it is printed out in the subsequent guesses! I think I would need to slice both the word and the guess, index (e.g. if guess[2] and answer[2] are the same) then find a way to reveal just that part of the word.
