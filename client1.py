@@ -1,8 +1,4 @@
 """
-client_web.py  -  NYT Wordle-style Flask web interface for Worduel
-===================================================================
-Run instead of client.py. server.py is unchanged.
-
 Usage
 -----
     pip install flask
