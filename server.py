@@ -10,14 +10,28 @@ MAX_GUESSES = 10
 # the line "INPUT:<prompt text>\n". the client then prompts the user and
 # sends back "<user text>\n".
 
+_buffers = {}  # per-connection recv buffer so recv_line() never splits a line
+
 def send(conn, text: str):
     # send message to the client
     conn.sendall((text + "\n").encode())
 
+def recv_line(conn) -> str:
+    # read one complete newline-terminated line, buffering any leftover bytes
+    if conn not in _buffers:
+        _buffers[conn] = ""
+    while "\n" not in _buffers[conn]:
+        data = conn.recv(4096).decode()
+        if not data:
+            raise ConnectionError("Client disconnected")
+        _buffers[conn] += data
+    line, _buffers[conn] = _buffers[conn].split("\n", 1)
+    return line.strip()
+
 def ask(conn, prompt: str) -> str:
     # send an input prompt to the client and return the user's stripped reply
     conn.sendall(f"INPUT:{prompt}\n".encode())
-    return conn.recv(1024).decode().strip()
+    return recv_line(conn)
 
 
 # game logic
@@ -67,12 +81,14 @@ def run_server():
         conn1, addr1 = srv.accept()
         print(f"Player 1 connected: {addr1}")
         send(conn1, "=== WORDUEL ===")
+        send(conn1, "ROLE:setter")
         send(conn1, "You are Player 1 — the Wordsetter. Waiting for Player 2 to connect…")
 
         # accept player 2 and give them role
         conn2, addr2 = srv.accept()
         print(f"Player 2 connected: {addr2}")
         send(conn2, "=== WORDUEL ===")
+        send(conn2, "ROLE:guesser")
         send(conn2, "You are Player 2 — the Guesser. Waiting for Player 1 to set a word…")
 
         # notify player 1 that player 2 has joined
@@ -89,10 +105,13 @@ def run_server():
         word_length   = len(secret)
         current_state = "*" * word_length
 
+        # send word length to both players so they can build their boards
+        send(conn1, f"WORDLEN:{word_length}")
+        send(conn2, f"WORDLEN:{word_length}")
+
         # confirm the word to player 1 and start the game for player 2
         send(conn1, f"Great! Your word '{secret}' is set. Watch the guesses come in…")
-        send(conn2, f"\nGame on! Guess the {word_length}-letter word. You have {MAX_GUESSES} attempts.")
-        send(conn2, f"Word: {current_state}")
+        send(conn2, f"Game on! Guess the {word_length}-letter word. You have {MAX_GUESSES} attempts.")
 
         # guessing loop
         for attempt in range(1, MAX_GUESSES + 1):
@@ -113,11 +132,17 @@ def run_server():
 
             if guess == secret:
                 # player 2 guessed correctly – notify both players and end the game
+                send(conn2, f"WIN:{secret.upper()} {attempt}")
+                send(conn1, f"WIN:{secret.upper()} {attempt}")
                 send(conn2, f"\n Correct! You got it in {attempt} attempt{'s' if attempt > 1 else ''}!")
-                send(conn2, f"The word was: {secret.upper()}")
                 send(conn1, f"\n Your word was guessed in {attempt} attempt{'s' if attempt > 1 else ''}!")
                 break
             else:
+                # send structured feedback to player 2 for board update
+                send(conn2, f"FEEDBACK:{','.join(feedback)}")
+                # send player 1 a spectator update with the guess and its colors
+                send(conn1, f"SPECTATE:{guess.upper()} {','.join(feedback)}")
+
                 # send player 2 the updated state and hint counts
                 remaining = MAX_GUESSES - attempt
                 msg = (
@@ -132,6 +157,8 @@ def run_server():
                 send(conn1, f"     → state: {current_state}  ({correct} right spot, {wrong} wrong spot)")
         else:
             # player 2 used all guesses without winning so reveal the word
+            send(conn2, f"LOSE:{secret.upper()}")
+            send(conn1, f"LOSE:{secret.upper()}")
             send(conn2, f"\n Out of guesses! The word was: {secret.upper()}")
             send(conn1, f"\n Player 2 ran out of guesses! Your word '{secret.upper()}' survived!")
 
@@ -146,4 +173,3 @@ def run_server():
 
 if __name__ == "__main__":
     run_server()
-
