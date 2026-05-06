@@ -28,7 +28,7 @@ I used Claude to troubleshoot the connection and port errors I was having. Durin
 Claude wrote the part of the code that made the HTML browser possible, in addition to the Flask server structure. I will go into how I used it more in depth in my video and explain how I got it to teach me the components that go into connecting a code into a browser!
 
 
-
+I put all of my old code files in a folder called "old code." The scripts i need to use are called client1.py, client2.py and server.py
 
 
 

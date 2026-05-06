@@ -16,14 +16,17 @@ import queue
 import time
 from flask import Flask, Response, request, jsonify, render_template_string
 
+# server connection details
 HOST = "127.0.0.1"
 PORT = 65434
 
 app = Flask(__name__)
 
+# queues for communication btwn tcp thread and flask routes
 event_queue:    queue.Queue = queue.Queue()
 pending_answer: queue.Queue = queue.Queue()
 
+#global connection state
 sock:           socket.socket | None = None
 connected:      bool = False
 connect_error:  str | None = None
@@ -31,12 +34,14 @@ pending_prompt: str | None = None
 
 
 def push(event_type: str, data: str):
+    # put an sse event onto the queue for the browser to pick up
     event_queue.put({"type": event_type, "data": data})
 
 
 def tcp_thread():
+    # runs in a background thread — handles all raw socket i/o with the game server
     global sock, connected, connect_error, pending_prompt
-    
+
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((HOST, PORT))
@@ -46,21 +51,33 @@ def tcp_thread():
 
         while True:
             chunk = sock.recv(4096)
+
+            # server closed the connection
             if not chunk:
                 push("status", "disconnected")
                 break
+
+
             buffer += chunk.decode()
+
+            # process any complete newline-terminated lines in the buffer
             while "\n" in buffer:
                 line, buffer = buffer.split("\n", 1)
+
                 if line.startswith("INPUT:"):
+                # server is asking the player for input — hold until the browser responds
                     prompt = line[len("INPUT:"):]
                     pending_prompt = prompt
                     push("input_request", prompt)
+
                     answer = pending_answer.get()
                     pending_prompt = None
+
                     sock.sendall((answer + "\n").encode())
                     push("sent", answer)
+
                 else:
+                # ordinary display line — forward straight to the browser
                     push("msg", line)
 
     except ConnectionRefusedError:
@@ -70,11 +87,12 @@ def tcp_thread():
     except Exception as exc:
         push("error", str(exc))
 
-
+#FLASK ROUTES
 @app.route("/")
 
 
 def index():
+    # serve the single-page game ui
     return render_template_string(HTML)
 
 
@@ -82,13 +100,14 @@ def index():
 
 
 def stream():
-
+    # server-sent events endpoint — the browser keeps this open to receive game updates
     def generate():
         while True:
             try:
                 evt = event_queue.get(timeout=30)
                 yield f"event: {evt['type']}\ndata: {evt['data']}\n\n"
             except queue.Empty:
+            # send a keepalive comment so the connection doesn't time out
                 yield ": keepalive\n\n"
     return Response(generate(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
@@ -98,15 +117,16 @@ def stream():
 
 
 def send():
+    # receive a guess or word from the browser and pass it to the tcp thread
     data   = request.get_json()
     answer = (data or {}).get("answer", "").strip()
-
     if answer:
         pending_answer.put(answer)
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "empty"}), 400
 
 
+#HTML/CSS/JS part -- thanks to claude
 HTML = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -465,9 +485,9 @@ es.addEventListener('error',()=>showToast('Connection lost…'));
 </body>
 </html>"""
 
-
+# entry point
 if __name__ == "__main__":
     threading.Thread(target=tcp_thread, daemon=True).start()
     time.sleep(0.3)
-    print("Worduel web client  ->  http://0.0.0.0:5001")
+    print("Worduel web client  ->  http://0.0.0.0:5000")
     app.run(host="0.0.0.0", port=5001, debug=False)
