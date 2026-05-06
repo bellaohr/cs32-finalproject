@@ -18,6 +18,7 @@ def send(conn, text: str):
 
 def recv_line(conn) -> str:
     # read one complete newline-terminated line, buffering any leftover bytes
+    
     if conn not in _buffers:
         _buffers[conn] = ""
     while "\n" not in _buffers[conn]:

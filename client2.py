@@ -36,12 +36,14 @@ def push(event_type: str, data: str):
 
 def tcp_thread():
     global sock, connected, connect_error, pending_prompt
+    
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((HOST, PORT))
         connected = True
         push("status", "connected")
         buffer = ""
+
         while True:
             chunk = sock.recv(4096)
             if not chunk:
@@ -60,20 +62,27 @@ def tcp_thread():
                     push("sent", answer)
                 else:
                     push("msg", line)
+
     except ConnectionRefusedError:
         connect_error = f"Could not connect to {HOST}:{PORT}. Is server.py running?"
         push("error", connect_error)
+
     except Exception as exc:
         push("error", str(exc))
 
 
 @app.route("/")
+
+
 def index():
     return render_template_string(HTML)
 
 
 @app.route("/stream")
+
+
 def stream():
+
     def generate():
         while True:
             try:
@@ -86,9 +95,12 @@ def stream():
 
 
 @app.route("/send", methods=["POST"])
+
+
 def send():
     data   = request.get_json()
     answer = (data or {}).get("answer", "").strip()
+
     if answer:
         pending_answer.put(answer)
         return jsonify({"ok": True})
