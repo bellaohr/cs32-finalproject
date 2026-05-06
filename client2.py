@@ -299,8 +299,6 @@ function deriveTileStates(guess, feedbackStr){
   return parts; // already "correct", "present", "absent"
 }
 
-
-
 function updateKey(letter,state){
   const p={correct:3,present:2,absent:1};
   if(!keyStates[letter]||p[state]>p[keyStates[letter]]){
@@ -354,14 +352,29 @@ function handleMsg(msg){
   }
   const cm=msg.match(/(\d+) correct position/); if(cm)lastCorrect=parseInt(cm[1]);
   const wm=msg.match(/(\d+) right letter, wrong spot/); if(wm)lastPresent=parseInt(wm[1]);
-  const sm=msg.match(/Word:\s+([A-Za-z*]+)/);
-  if(sm&&wordLength>0&&role==='guesser'){
-    const ss=sm[1];
-    if(ss.length===wordLength){
-      revealRow(currentRow,lastGuess||currentGuess.join(''),ss,lastCorrect,lastPresent);
-      currentRow++; currentCol=0; currentGuess=[]; lastCorrect=0; lastPresent=0;
-    }
+const sm = msg.match(/Word:\s+([A-Za-z*]+)/);
+const fm = msg.match(/Feedback:\s+(.+)/);
+
+if(sm && fm && wordLength > 0 && role === 'guesser'){
+  const ss = sm[1];
+  const feedbackStr = fm[1];
+
+  if(ss.length === wordLength){
+    revealRow(
+      currentRow,
+      lastGuess || currentGuess.join(''),
+      feedbackStr,
+      lastCorrect,
+      lastPresent
+    );
+
+    currentRow++;
+    currentCol = 0;
+    currentGuess = [];
+    lastCorrect = 0;
+    lastPresent = 0;
   }
+}
   if(role==='setter'){
     const gm=msg.match(/Guess \d+: ([A-Z]+)/i); if(gm)showToast('Opponent guessed: '+gm[1].toUpperCase());
   }
@@ -413,6 +426,6 @@ function bounceRow(row){
 if __name__ == "__main__":
     threading.Thread(target=tcp_thread, daemon=True).start()
     time.sleep(0.3)
-    print("Worduel web client  ->  http://0.0.0.0:5000")
+    print("Worduel web client  ->  http://0.0.0.0:5001")
     print("Open the VS Code forwarded port URL in your browser.")
     app.run(host="0.0.0.0", port=5001, debug=False)

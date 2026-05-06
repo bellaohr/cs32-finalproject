@@ -27,7 +27,7 @@ def compare_words(secret: str, guess: str, current_state: str):
     feedback = ["absent"] * len(secret)
 
     secret_used = [False] * len(secret)
-    guess_used  = [False] * len(secret)
+    guess_used  = [False] * len(guess)
 
     # greens -- go thru to see if letter matches @ each position
     for i in range(len(secret)):

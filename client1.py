@@ -352,14 +352,29 @@ function handleMsg(msg){
   }
   const cm=msg.match(/(\d+) correct position/); if(cm)lastCorrect=parseInt(cm[1]);
   const wm=msg.match(/(\d+) right letter, wrong spot/); if(wm)lastPresent=parseInt(wm[1]);
-  const sm=msg.match(/Word:\s+([A-Za-z*]+)/);
-  if(sm&&wordLength>0&&role==='guesser'){
-    const ss=sm[1];
-    if(ss.length===wordLength){
-      revealRow(currentRow,lastGuess||currentGuess.join(''),ss,lastCorrect,lastPresent);
-      currentRow++; currentCol=0; currentGuess=[]; lastCorrect=0; lastPresent=0;
-    }
+const sm = msg.match(/Word:\s+([A-Za-z*]+)/);
+const fm = msg.match(/Feedback:\s+(.+)/);
+
+if(sm && fm && wordLength > 0 && role === 'guesser'){
+  const ss = sm[1];
+  const feedbackStr = fm[1];
+
+  if(ss.length === wordLength){
+    revealRow(
+      currentRow,
+      lastGuess || currentGuess.join(''),
+      feedbackStr,
+      lastCorrect,
+      lastPresent
+    );
+
+    currentRow++;
+    currentCol = 0;
+    currentGuess = [];
+    lastCorrect = 0;
+    lastPresent = 0;
   }
+}
   if(role==='setter'){
     const gm=msg.match(/Guess \d+: ([A-Z]+)/i); if(gm)showToast('Opponent guessed: '+gm[1].toUpperCase());
   }
