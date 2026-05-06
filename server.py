@@ -23,35 +23,34 @@ def ask(conn, prompt: str) -> str:
 # game logic
 
 def compare_words(secret: str, guess: str, current_state: str):
-    # compare the guess against the secret word and update the revealed state
     revealed = list(current_state)
-    correct_spot = 0
-    wrong_spot = 0
+    feedback = ["absent"] * len(secret)
 
-    # track which letters in the secret and guess have already been matched
     secret_used = [False] * len(secret)
-    guess_used  = [False] * len(guess)
+    guess_used  = [False] * len(secret)
 
-    # 1: find letters in the right position
+    # greens -- go thru to see if letter matches @ each position
     for i in range(len(secret)):
         if guess[i] == secret[i]:
-            revealed[i]    = guess[i]
-            correct_spot  += 1
+            feedback[i] = "correct"
+            revealed[i] = guess[i]
             secret_used[i] = True
-            guess_used[i]  = True
 
-    # 2: find correct letters in the wrong position
-    for i in range(len(guess)):
-        if guess_used[i]:
+    # loop through with each character from guess over the answer word
+    for i in range(len(secret)):
+        if feedback[i] == "correct":
             continue
         for j in range(len(secret)):
             if not secret_used[j] and guess[i] == secret[j]:
-                wrong_spot    += 1
+                feedback[i] = "present"
                 secret_used[j] = True
+                guess_used[i]  = True
                 break
+# basically before, it just said there were two letters in the wrong spot not specifying which exact one...this solves that
+    correct_spot = feedback.count("correct")
+    wrong_spot   = feedback.count("present")
 
-    # return the updated revealed word and the counts
-    return "".join(revealed), correct_spot, wrong_spot
+    return "".join(revealed), correct_spot, wrong_spot, feedback
 
 
 # server
@@ -110,7 +109,7 @@ def run_server():
             send(conn1, f"  Guess {attempt}: {guess.upper()}")
 
             # evaluate the guess and update the revealed state
-            current_state, correct, wrong = compare_words(secret, guess, current_state)
+            current_state, correct, wrong, feedback = compare_words(secret, guess, current_state)
 
             if guess == secret:
                 # player 2 guessed correctly – notify both players and end the game
@@ -123,6 +122,7 @@ def run_server():
                 remaining = MAX_GUESSES - attempt
                 msg = (
                     f"\nWord:  {current_state}\n"
+                    f"Feedback: {' '.join(feedback)}\n"
                     f"  {correct} correct position\n"
                     f"  {wrong} right letter, wrong spot\n"
                     f"  {remaining} guess{'es' if remaining != 1 else ''} remaining"

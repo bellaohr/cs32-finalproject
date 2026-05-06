@@ -1,4 +1,8 @@
 """
+client_web.py  -  NYT Wordle-style Flask web interface for Worduel
+===================================================================
+Run instead of client.py. server.py is unchanged.
+
 Usage
 -----
     pip install flask
@@ -12,49 +16,40 @@ import queue
 import time
 from flask import Flask, Response, request, jsonify, render_template_string
 
-# server connection configuration
 HOST = "127.0.0.1"
 PORT = 65434
 
-# flask app
 app = Flask(__name__)
 
 event_queue:    queue.Queue = queue.Queue()
 pending_answer: queue.Queue = queue.Queue()
 
-# global connection state
 sock:           socket.socket | None = None
 connected:      bool = False
 connect_error:  str | None = None
 pending_prompt: str | None = None
 
-# pushing events to browser via event stream
+
 def push(event_type: str, data: str):
     event_queue.put({"type": event_type, "data": data})
 
-# background tcp client thread -- like basically socket connection
+
 def tcp_thread():
     global sock, connected, connect_error, pending_prompt
-
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((HOST, PORT))
         connected = True
         push("status", "connected")
         buffer = ""
-
         while True:
             chunk = sock.recv(4096)
-
             if not chunk:
                 push("status", "disconnected")
                 break
-
             buffer += chunk.decode()
-
             while "\n" in buffer:
                 line, buffer = buffer.split("\n", 1)
-
                 if line.startswith("INPUT:"):
                     prompt = line[len("INPUT:"):]
                     pending_prompt = prompt
@@ -65,17 +60,13 @@ def tcp_thread():
                     push("sent", answer)
                 else:
                     push("msg", line)
-
     except ConnectionRefusedError:
-        # if server isn't running
         connect_error = f"Could not connect to {HOST}:{PORT}. Is server.py running?"
         push("error", connect_error)
-
     except Exception as exc:
-        # if its an unexpected error
         push("error", str(exc))
 
-# FLASK ROUTES!
+
 @app.route("/")
 def index():
     return render_template_string(HTML)
@@ -103,7 +94,7 @@ def send():
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "empty"}), 400
 
-# HTML + CSS + JavaScrpt
+
 HTML = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -303,24 +294,9 @@ function revealRow(row,guess,stateStr,correct,present){
   },states.length*300+100);
 }
 
-function deriveTileStates(guess,stateStr,correctCount,presentCount){
-  const arr=stateStr.split(''), out=Array(guess.length).fill('absent');
-  const usedSlot=Array(guess.length).fill(false), usedGuess=Array(guess.length).fill(false);
-  for(let i=0;i<guess.length;i++){
-    if(arr[i]!=='*'){out[i]='correct';usedSlot[i]=true;usedGuess[i]=true;}
-  }
-  let budget=presentCount;
-  for(let i=0;i<guess.length&&budget>0;i++){
-    if(usedGuess[i])continue;
-    let found=false;
-    for(let j=0;j<guess.length;j++){
-      if(!usedSlot[j]&&arr[j]==='*'&&guess[i]===guess[j]&&i!==j){
-        out[i]='present';usedSlot[j]=true;usedGuess[i]=true;budget--;found=true;break;
-      }
-    }
-    if(!found&&budget>0){out[i]='present';usedGuess[i]=true;budget--;}
-  }
-  return out;
+function deriveTileStates(guess, feedbackStr){
+  const parts = feedbackStr.split(' ');
+  return parts; // already "correct", "present", "absent"
 }
 
 function updateKey(letter,state){
@@ -433,11 +409,8 @@ function bounceRow(row){
 
 
 if __name__ == "__main__":
-    # start TCP client in background
     threading.Thread(target=tcp_thread, daemon=True).start()
-    time.sleep(0.3) # give connection time to initialize
-    # prints info for user
+    time.sleep(0.3)
     print("Worduel web client  ->  http://0.0.0.0:5000")
     print("Open the VS Code forwarded port URL in your browser.")
-    # start flask server
     app.run(host="0.0.0.0", port=5000, debug=False)

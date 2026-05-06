@@ -1,8 +1,4 @@
 """
-client_web.py  -  NYT Wordle-style Flask web interface for Worduel
-===================================================================
-Run instead of client.py. server.py is unchanged.
-
 Usage
 -----
     pip install flask
@@ -36,20 +32,38 @@ def push(event_type: str, data: str):
 
 def tcp_thread():
     global sock, connected, connect_error, pending_prompt
+    # global means modifying variables defined outside of this function
     try:
+        # creates TCP socket
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        # connect to the game server using the host and port defined at the rop
         sock.connect((HOST, PORT))
+
+        # mark connection as true so that the browser knows its live
         connected = True
+
+        #push a 'connected' event to browser via the SSE
         push("status", "connected")
+
+        #buffer stores incomplete incoming data until we have a full line
         buffer = ""
+
         while True:
+            # wait for the next chunk of data from the game server
             chunk = sock.recv(4096)
-            if not chunk:
+
+            if not chunk: # means server closed the connection
                 push("status", "disconnected")
                 break
-            buffer += chunk.decode()
+
+            buffer += chunk.decode() # make into readable string and add it to buffer
+
+            #loop through buffer processing one line at a time
             while "\n" in buffer:
                 line, buffer = buffer.split("\n", 1)
+
+                # gets, strips, saves, sends the answer back to server
                 if line.startswith("INPUT:"):
                     prompt = line[len("INPUT:"):]
                     pending_prompt = prompt
@@ -58,12 +72,16 @@ def tcp_thread():
                     pending_prompt = None
                     sock.sendall((answer + "\n").encode())
                     push("sent", answer)
+
+                #plain display message from the server
                 else:
                     push("msg", line)
-    except ConnectionRefusedError:
+
+    except ConnectionRefusedError: # happens if server isn't running yet
         connect_error = f"Could not connect to {HOST}:{PORT}. Is server.py running?"
         push("error", connect_error)
-    except Exception as exc:
+
+    except Exception as exc: # catches unexpected errors and sends them to the browser
         push("error", str(exc))
 
 
@@ -294,12 +312,25 @@ function revealRow(row,guess,stateStr,correct,present){
   },states.length*300+100);
 }
 
-function deriveTileStates(guess, feedbackStr){
-  const parts = feedbackStr.split(' ');
-  return parts; // already "correct", "present", "absent"
+function deriveTileStates(guess,stateStr,correctCount,presentCount){
+  const arr=stateStr.split(''), out=Array(guess.length).fill('absent');
+  const usedSlot=Array(guess.length).fill(false), usedGuess=Array(guess.length).fill(false);
+  for(let i=0;i<guess.length;i++){
+    if(arr[i]!=='*'){out[i]='correct';usedSlot[i]=true;usedGuess[i]=true;}
+  }
+  let budget=presentCount;
+  for(let i=0;i<guess.length&&budget>0;i++){
+    if(usedGuess[i])continue;
+    let found=false;
+    for(let j=0;j<guess.length;j++){
+      if(!usedSlot[j]&&arr[j]==='*'&&guess[i]===guess[j]&&i!==j){
+        out[i]='present';usedSlot[j]=true;usedGuess[i]=true;budget--;found=true;break;
+      }
+    }
+    if(!found&&budget>0){out[i]='present';usedGuess[i]=true;budget--;}
+  }
+  return out;
 }
-
-
 
 function updateKey(letter,state){
   const p={correct:3,present:2,absent:1};
