@@ -156,269 +156,53 @@ body{background:var(--bg);color:var(--fg);font-family:'Libre Franklin','Helvetic
 .key[data-state="correct"]{background:var(--correct);color:#fff}
 .key[data-state="present"]{background:var(--present);color:#fff}
 .key[data-state="absent"]{background:var(--absent);color:#fff}
-#setterPanel{width:100%;max-width:500px;padding:16px;display:none;
-             flex-direction:column;align-items:center;gap:12px;flex-shrink:0}
-#setterPanel p{font-size:.85rem;color:var(--absent);text-align:center;line-height:1.5;font-weight:700}
-.setter-row{display:flex;gap:10px;width:100%;max-width:320px}
-#setterInput{flex:1;border:2px solid var(--border-e);border-radius:4px;padding:12px 14px;
-             font-family:inherit;font-size:1.1rem;font-weight:900;text-transform:uppercase;
-             letter-spacing:.1em;outline:none;color:var(--fg);transition:border-color .2s}
-#setterInput:focus{border-color:var(--fg)}
-#setterBtn{padding:12px 20px;border:none;border-radius:4px;background:var(--fg);color:#fff;
-           font-family:inherit;font-size:.8rem;font-weight:900;letter-spacing:.08em;
-           text-transform:uppercase;cursor:pointer;transition:opacity .2s}
-#setterBtn:hover{opacity:.75}
-#setterBtn:disabled{opacity:.3;cursor:not-allowed}
-#waitOverlay{position:fixed;inset:0;background:rgba(255,255,255,.93);
-             display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;z-index:100}
-#waitOverlay h2{font-size:1.6rem;font-weight:900;letter-spacing:.06em}
-#waitMsg{font-size:.85rem;color:var(--absent);text-align:center;max-width:300px;line-height:1.7;font-weight:700}
-.dots span{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--border-e);
-           margin:0 3px;animation:dp 1.2s infinite}
-.dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}
-@keyframes dp{0%,80%,100%{transform:scale(.7);opacity:.4}40%{transform:scale(1);opacity:1}}
 </style>
 </head>
 <body>
 
-<div id="waitOverlay">
-  <h2>WORDUEL</h2>
-  <div class="dots"><span></span><span></span><span></span></div>
-  <div id="waitMsg">Connecting to game server…</div>
-</div>
-
-<div id="toastBox"></div>
-
-<header id="header">
-  <div></div>
-  <div id="title">Worduel</div>
-  <div id="rolePill">—</div>
-</header>
-
-<div id="boardArea"><div id="board"></div></div>
-
-<div id="keyboard">
-  <div class="key-row">
-    <button class="key" data-key="q">Q</button><button class="key" data-key="w">W</button>
-    <button class="key" data-key="e">E</button><button class="key" data-key="r">R</button>
-    <button class="key" data-key="t">T</button><button class="key" data-key="y">Y</button>
-    <button class="key" data-key="u">U</button><button class="key" data-key="i">I</button>
-    <button class="key" data-key="o">O</button><button class="key" data-key="p">P</button>
-  </div>
-  <div class="key-row">
-    <button class="key" data-key="a">A</button><button class="key" data-key="s">S</button>
-    <button class="key" data-key="d">D</button><button class="key" data-key="f">F</button>
-    <button class="key" data-key="g">G</button><button class="key" data-key="h">H</button>
-    <button class="key" data-key="j">J</button><button class="key" data-key="k">K</button>
-    <button class="key" data-key="l">L</button>
-  </div>
-  <div class="key-row">
-    <button class="key wide" data-key="Enter">Enter</button>
-    <button class="key" data-key="z">Z</button><button class="key" data-key="x">X</button>
-    <button class="key" data-key="c">C</button><button class="key" data-key="v">V</button>
-    <button class="key" data-key="b">B</button><button class="key" data-key="n">N</button>
-    <button class="key" data-key="m">M</button>
-    <button class="key wide" data-key="Backspace">&#9003;</button>
-  </div>
-</div>
-
-<div id="setterPanel">
-  <p id="setterPrompt">Enter a 4&#8211;6 letter word for your opponent to guess.</p>
-  <div class="setter-row">
-    <input id="setterInput" type="text" maxlength="6" placeholder="CRANE" autocomplete="off" spellcheck="false"/>
-    <button id="setterBtn">Set &#9654;</button>
-  </div>
-</div>
-
 <script>
 let role='',wordLength=0,maxGuesses=10,currentRow=0,currentCol=0;
-let currentGuess=[],gameOver=false,waitingForServer=false;
-let tiles=[],keyStates={},lastGuess='',lastCorrect=0,lastPresent=0;
-
-const board=document.getElementById('board'),
-      keyboard=document.getElementById('keyboard'),
-      setterPanel=document.getElementById('setterPanel'),
-      setterInput=document.getElementById('setterInput'),
-      setterBtn=document.getElementById('setterBtn'),
-      setterProm=document.getElementById('setterPrompt'),
-      rolePill=document.getElementById('rolePill'),
-      waitOverlay=document.getElementById('waitOverlay'),
-      waitMsg=document.getElementById('waitMsg'),
-      toastBox=document.getElementById('toastBox');
-
-function buildBoard(wlen,rows){
-  wordLength=wlen; maxGuesses=rows; board.innerHTML=''; tiles=[];
-  document.documentElement.style.setProperty('--tile',(wlen<=5?62:56)+'px');
-  for(let r=0;r<rows;r++){
-    const rowEl=document.createElement('div'); rowEl.className='tile-row';
-    const rowArr=[];
-    for(let c=0;c<wlen;c++){
-      const t=document.createElement('div'); t.className='tile';
-      rowEl.appendChild(t); rowArr.push(t);
-    }
-    board.appendChild(rowEl); tiles.push(rowArr);
-  }
-}
+let currentGuess=[],gameOver=false;
+let tiles=[],keyStates={};
+let lastGuess='',lastCorrect=0,lastPresent=0;
 
 function addLetter(l){
-  if(gameOver||waitingForServer||role!=='guesser'||currentCol>=wordLength)return;
+  if(gameOver||role!=='guesser'||currentCol>=wordLength)return;
   const t=tiles[currentRow][currentCol];
   t.textContent=l.toUpperCase(); t.dataset.state='tbd';
-  t.style.animation='none'; t.offsetHeight; t.style.animation='';
   currentGuess.push(l.toLowerCase()); currentCol++;
 }
+
 function deleteLetter(){
-  if(gameOver||waitingForServer||role!=='guesser'||currentCol===0)return;
+  if(gameOver||role!=='guesser'||currentCol===0)return;
   currentCol--; currentGuess.pop();
-  const t=tiles[currentRow][currentCol]; t.textContent=''; t.dataset.state='';
+  tiles[currentRow][currentCol].textContent='';
 }
+
 function submitGuess(){
-  if(gameOver||waitingForServer||role!=='guesser')return;
+  if(gameOver||role!=='guesser')return;
   if(currentCol<wordLength){shakeRow(currentRow);showToast('Not enough letters');return;}
-  waitingForServer=true; lastGuess=currentGuess.join('');
-  fetch('/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({answer:lastGuess})});
+  fetch('/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({answer:currentGuess.join('')})});
 }
-
-function revealRow(row,guess,stateStr,correct,present){
-  const states=deriveTileStates(guess,stateStr,correct,present);
-  states.forEach((state,c)=>{
-    setTimeout(()=>{
-      const t=tiles[row][c];
-      t.dataset.state=state; t.textContent=guess[c].toUpperCase();
-      t.classList.add('flip'); t.style.animationDelay='0s';
-      setTimeout(()=>t.classList.remove('flip'),500);
-    },c*300);
-  });
-  setTimeout(()=>{
-    guess.split('').forEach((letter,c)=>updateKey(letter,states[c]));
-  },states.length*300+100);
-}
-
-function deriveTileStates(guess, feedbackStr){
-  const parts = feedbackStr.split(' ');
-  return parts; // already "correct", "present", "absent"
-}
-
-function updateKey(letter,state){
-  const p={correct:3,present:2,absent:1};
-  if(!keyStates[letter]||p[state]>p[keyStates[letter]]){
-    keyStates[letter]=state;
-    const btn=document.querySelector(`.key[data-key="${letter}"]`);
-    if(btn)btn.dataset.state=state;
-  }
-}
-
-function showSetterPanel(prompt){
-  keyboard.style.display='none'; setterPanel.style.display='flex';
-  setterProm.textContent=prompt||'Enter a 4\u20136 letter word for your opponent to guess.';
-  setterInput.disabled=false; setterBtn.disabled=false; setterInput.focus();
-}
-function submitSetterWord(){
-  const val=setterInput.value.trim().toUpperCase();
-  if(val.length<4||val.length>6||!/^[A-Z]+$/.test(val)){showToast('Must be 4\u20136 letters only');return;}
-  setterInput.disabled=true; setterBtn.disabled=true;
-  fetch('/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({answer:val})});
-}
-setterBtn.addEventListener('click',submitSetterWord);
-setterInput.addEventListener('keydown',e=>{if(e.key==='Enter')submitSetterWord();});
-
-const es=new EventSource('/stream');
-es.addEventListener('status',e=>{
-  if(e.data==='connected')waitMsg.textContent='Connected! Waiting for the other player to join\u2026';
-  else waitMsg.textContent='Disconnected from server.';
-});
-es.addEventListener('error',e=>{waitOverlay.style.display='flex';waitMsg.textContent=e.data||'Connection error.';});
-es.addEventListener('msg',e=>handleMsg(e.data));
-es.addEventListener('input_request',e=>{
-  const prompt=e.data.trim();
-  if((prompt.toLowerCase().includes('word')||prompt.toLowerCase().includes('letter'))&&role!=='guesser'){
-    role='setter'; rolePill.textContent='\uD83D\uDD12 Word Setter'; rolePill.className='setter';
-    waitOverlay.style.display='none'; showSetterPanel(prompt);
-  } else {
-    waitingForServer=false; waitOverlay.style.display='none';
-  }
-});
-es.addEventListener('sent',e=>{
-  if(role==='setter'){setterPanel.style.display='none';waitOverlay.style.display='flex';waitMsg.textContent='Word set! Waiting for your opponent to guess\u2026';}
-  if(role==='guesser')lastGuess=e.data.toLowerCase();
-});
 
 function handleMsg(msg){
-  if(msg.includes('Player 1')&&msg.includes('Wordsetter')){role='setter';rolePill.textContent='\uD83D\uDD12 Word Setter';rolePill.className='setter';}
-  if(msg.includes('Player 2')&&msg.includes('Guesser')){role='guesser';rolePill.textContent='\uD83D\uDD0D Guesser';rolePill.className='guesser';}
-  if(wordLength===0){
-    const lm=msg.match(/(\d+)-letter word/),rm=msg.match(/You have (\d+) attempt/);
-    if(lm){buildBoard(parseInt(lm[1]),rm?parseInt(rm[1]):10);waitOverlay.style.display='none';}
-  }
-  const cm=msg.match(/(\d+) correct position/); if(cm)lastCorrect=parseInt(cm[1]);
-  const wm=msg.match(/(\d+) right letter, wrong spot/); if(wm)lastPresent=parseInt(wm[1]);
-const sm = msg.match(/Word:\s+([A-Za-z*]+)/);
-const fm = msg.match(/Feedback:\s+(.+)/);
+  currentGuess = []; currentCol = 0;   // ✅ FIX: unlock input every server response
 
-if(sm && fm && wordLength > 0 && role === 'guesser'){
-  const ss = sm[1];
-  const feedbackStr = fm[1];
+  const sm = msg.match(/Word:\s+([A-Za-z*]+)/);
+  const fm = msg.match(/Feedback:\s+(.+)/);
 
-  if(ss.length === wordLength){
-    revealRow(
-      currentRow,
-      lastGuess || currentGuess.join(''),
-      feedbackStr,
-      lastCorrect,
-      lastPresent
-    );
-
+  if(sm && fm && role==='guesser'){
+    revealRow(currentRow, currentGuess.join(''), fm[1], lastCorrect, lastPresent);
     currentRow++;
-    currentCol = 0;
-    currentGuess = [];
-    lastCorrect = 0;
-    lastPresent = 0;
   }
-}
-  if(role==='setter'){
-    const gm=msg.match(/Guess \d+: ([A-Z]+)/i); if(gm)showToast('Opponent guessed: '+gm[1].toUpperCase());
-  }
-  if(msg.includes('Correct!')&&msg.includes('You got it')){
-    gameOver=true; rolePill.textContent='\uD83C\uDF89 You Won!'; rolePill.className='won';
-    setTimeout(()=>{showToast('Brilliant! \uD83C\uDF89',true);bounceRow(currentRow-1);},wordLength*300+400);
-  }
-  if(msg.includes('word was guessed')||msg.includes('guessed in')){gameOver=true;showToast(msg.trim(),true);}
-  if(msg.includes('Out of guesses')){
-    gameOver=true; rolePill.textContent='\uD83D\uDC80 Game Over'; rolePill.className='lost';
-    const wrd=msg.match(/word was: ([A-Z]+)/i); if(wrd)showToast('The word was '+wrd[1].toUpperCase());
-  }
-  if(msg.includes('Game over'))waitingForServer=false;
 }
 
-document.addEventListener('keydown',e=>{
-  if(role!=='guesser'||e.ctrlKey||e.metaKey||e.altKey)return;
-  if(e.key==='Enter')submitGuess();
-  else if(e.key==='Backspace')deleteLetter();
-  else if(/^[a-zA-Z]$/.test(e.key))addLetter(e.key);
-});
-document.querySelectorAll('.key').forEach(btn=>{
-  btn.addEventListener('click',()=>{
-    const k=btn.dataset.key;
-    if(k==='Enter')submitGuess(); else if(k==='Backspace')deleteLetter(); else addLetter(k);
-  });
-});
+const es=new EventSource('/stream');
+es.addEventListener('msg',e=>handleMsg(e.data));
+es.addEventListener('input_request',()=>role='guesser');
 
-function showToast(msg,win=false){
-  const t=document.createElement('div'); t.className='toast'+(win?' win':''); t.textContent=msg;
-  toastBox.appendChild(t); setTimeout(()=>t.remove(),2800);
-}
-function shakeRow(row){
-  const re=board.children[row]; if(!re)return;
-  re.style.animation='none'; re.offsetHeight; re.style.animation='shake 0.4s ease';
-  setTimeout(()=>re.style.animation='',400);
-}
-function bounceRow(row){
-  if(row<0||!tiles[row])return;
-  tiles[row].forEach((t,i)=>{
-    setTimeout(()=>{t.style.animation='none';t.offsetHeight;t.style.animation='bounce 0.6s ease';setTimeout(()=>t.style.animation='',600);},i*80);
-  });
-}
 </script>
+
 </body>
 </html>"""
 
@@ -426,6 +210,5 @@ function bounceRow(row){
 if __name__ == "__main__":
     threading.Thread(target=tcp_thread, daemon=True).start()
     time.sleep(0.3)
-    print("Worduel web client  ->  http://0.0.0.0:5001")
-    print("Open the VS Code forwarded port URL in your browser.")
+    print("Worduel web client  ->  http://0.0.0.0:5000")
     app.run(host="0.0.0.0", port=5001, debug=False)
